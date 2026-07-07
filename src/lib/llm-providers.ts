@@ -24,13 +24,13 @@ export const LLM_PROVIDERS: Record<ProviderType, LLMProvider> = {
     id: "groq",
     name: "Groq",
     baseUrl: "https://api.groq.com/openai/v1",
-    defaultModel: "llama-3.1-70b-versatile",
+    defaultModel: "llama-3.3-70b-versatile",
     requiresApiKey: true,
     description: "Fastest open-source LLM inference. Lightning-fast responses.",
     freeLimit: "30 requests/min (2,880/day)",
     models: [
-      { value: "llama-3.1-70b-versatile", label: "Llama 3.1 70b (Recommended)" },
-      { value: "llama-3.1-8b-instant", label: "Llama 3.1 8b (Fast)" },
+      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70b (Latest)" },
+      { value: "llama-3.2-90b-vision-preview", label: "Llama 3.2 90b Vision" },
       { value: "mixtral-8x7b-32768", label: "Mixtral 8x7b" },
     ],
   },
@@ -122,7 +122,7 @@ export function getLLMConfig(): LLMConfig | null {
     return {
       provider: "groq",
       apiKey: defaultGroqKey,
-      model: "llama-3.1-70b-versatile",
+      model: "llama-3.3-70b-versatile",
     };
   }
 

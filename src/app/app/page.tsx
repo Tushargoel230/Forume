@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { supabaseBrowser } from "@/lib/supabase";
+import { Logo } from "@/components/Logo";
 import { ResumeSheet } from "@/components/ResumeSheet";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { getLLMConfig } from "@/lib/llm-providers";
@@ -72,8 +73,8 @@ export default function Dashboard() {
     <main className="flex-1">
       <header className="sticky top-0 z-20 bg-linen/90 backdrop-blur border-b border-rule">
         <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
-          <Link href="/" className="font-bold tracking-[0.18em]">
-            FOR<span className="text-amber">UME</span>
+          <Link href="/">
+            <Logo />
           </Link>
           <nav className="flex gap-1">
             {(
@@ -188,15 +189,26 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
     setError("");
     try {
       const llmConfig = getLLMConfig();
+      const isDemo = session.access_token.startsWith("demo-");
+      // demo documents live in the browser, so the server needs them per-request
+      let documents: { name: string; content: string }[] = [];
+      if (isDemo && typeof window !== "undefined") {
+        try {
+          documents = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]");
+        } catch { documents = []; }
+      }
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
-          "X-Demo-Email": session.user.email ?? "",
+          ...(isDemo ? { "X-Demo-Email": session.user.email ?? "" } : {}),
           ...(llmConfig ? { "X-LLM-Config": JSON.stringify(llmConfig) } : {}),
         },
-        body: JSON.stringify({ jd, company, role, template }),
+        body: JSON.stringify({
+          jd, company, role, template,
+          ...(isDemo ? { documents, contact } : {}),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
@@ -277,9 +289,9 @@ function ResultPanel({
     <div className="rounded-sm border border-rule bg-paper">
       {result.is_demo && (
         <p className="border-b border-amber bg-amber/10 px-5 py-3 text-sm">
-          <b>Sample output.</b> No AI engine is connected yet — this shows the
-          layout and flow. Generation from your real profile activates once an
-          engine is configured.
+          <b>Sample output.</b> To generate for real: add your resume text under{" "}
+          <b>Profile</b>, then connect a free engine under <b>AI Settings</b>{" "}
+          (Groq works well) — takes about two minutes.
         </p>
       )}
       <div className="flex border-b border-rule">

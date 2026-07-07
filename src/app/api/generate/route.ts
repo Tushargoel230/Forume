@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAsUser } from "@/lib/supabase";
 import { atsCheck } from "@/lib/ats";
 import { DEMO_COVER, DEMO_KEYWORDS, DEMO_RESUME } from "@/lib/demo";
-import { getLLMConfig } from "@/lib/llm-providers";
+import { LLM_PROVIDERS, type ProviderType } from "@/lib/llm-providers";
 import * as prompts from "@/lib/prompts";
 import type { Contact, Resume } from "@/lib/types";
 
@@ -19,11 +19,24 @@ function llmConfigFromEnv(): LlmConfig | null {
   return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey: process.env.LLM_API_KEY ?? "", model };
 }
 
+/** Client-sent config: {provider, apiKey, model, baseUrl?}. The base URL is
+    resolved through the provider allowlist so this server only ever calls
+    known LLM hosts (custom URLs allowed for local Ollama only). */
 function llmConfigFromHeader(header: string): LlmConfig | null {
   try {
-    const config = JSON.parse(header);
-    if (!config.baseUrl || !config.model) return null;
-    return { baseUrl: config.baseUrl.replace(/\/$/, ""), apiKey: config.apiKey ?? "", model: config.model };
+    const cfg = JSON.parse(header) as {
+      provider?: ProviderType; apiKey?: string; model?: string; baseUrl?: string;
+    };
+    if (!cfg.provider || !cfg.model) return null;
+    const provider = LLM_PROVIDERS[cfg.provider];
+    if (!provider) return null;
+    let baseUrl = provider.baseUrl;
+    if (cfg.provider === "ollama" && cfg.baseUrl) {
+      const url = new URL(cfg.baseUrl);
+      if (!["localhost", "127.0.0.1"].includes(url.hostname)) return null;
+      baseUrl = cfg.baseUrl;
+    }
+    return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey: cfg.apiKey ?? "", model: cfg.model };
   } catch {
     return null;
   }
@@ -60,6 +73,31 @@ function extractJson<T>(text: string): T {
   return JSON.parse(t.slice(start, end + 1)) as T;
 }
 
+async function runPipeline(
+  cfg: LlmConfig, context: string, contact: Contact,
+  company: string, role: string, jd: string,
+): Promise<{ resume: Resume; cover: string; keywords: string[] }> {
+  const co = company || "(not specified)";
+  const ro = role || "(see JD)";
+
+  const analysisRaw = await chat(cfg, prompts.ANALYSIS_SYSTEM,
+    prompts.analysisUser(context, co, ro, jd), true);
+  const analysis = extractJson<{ top_keywords?: string[] }>(analysisRaw);
+  const analysisStr = JSON.stringify(analysis, null, 1);
+
+  const resumeRaw = await chat(cfg, prompts.RESUME_SYSTEM,
+    prompts.resumeUser(context, co, ro, jd, analysisStr), true);
+  const resume = extractJson<Resume>(resumeRaw);
+
+  const cover = (
+    await chat(cfg, prompts.COVER_SYSTEM,
+      prompts.coverUser(context, contact.name, co, ro, jd, analysisStr), false)
+  ).trim();
+
+  const keywords = (analysis.top_keywords ?? []).filter((k) => typeof k === "string");
+  return { resume, cover, keywords };
+}
+
 export async function POST(request: Request) {
   const auth = request.headers.get("authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "");
@@ -70,20 +108,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
 
-  let user: { id: string; email?: string | null } | null = null;
-  let supabase: ReturnType<typeof supabaseAsUser> | null = null;
-
-  if (demoMode) {
-    user = { id: `demo-${encodeURIComponent(demoEmail || "demo@forume.app")}`, email: demoEmail || "demo@forume.app" };
-  } else {
-    supabase = supabaseAsUser(token);
-    const { data: userData, error: userErr } = await supabase.auth.getUser(token);
-    if (userErr || !userData.user) {
-      return NextResponse.json({ error: "Session expired — sign in again." }, { status: 401 });
-    }
-    user = userData.user;
-  }
-
   const body = await request.json();
   const jd: string = (body.jd ?? "").trim();
   const company: string = (body.company ?? "").trim();
@@ -91,40 +115,92 @@ export async function POST(request: Request) {
   const template: string = body.template ?? "slate";
   if (!jd) return NextResponse.json({ error: "Paste a job description first." }, { status: 422 });
 
-  const contact: Contact = demoMode
-    ? { name: "", email: user.email ?? "", phone: "", location: "", linkedin: "", website: "" }
-    : { name: "", email: user.email ?? "", phone: "", location: "", linkedin: "", website: "" };
-
   const cfg = llmConfigFromHeader(request.headers.get("x-llm-config") || "") || llmConfigFromEnv();
-  let resume: Resume;
-  let cover: string;
-  let keywords: string[];
-  let isDemo = false;
 
+  /* ---------- demo mode: no database; documents come from the client ---------- */
   if (demoMode) {
-    resume = DEMO_RESUME;
-    cover = DEMO_COVER;
-    keywords = DEMO_KEYWORDS;
-    isDemo = true;
-  } else if (!cfg) {
-    resume = DEMO_RESUME;
-    cover = DEMO_COVER;
-    keywords = DEMO_KEYWORDS;
-    isDemo = true;
-  } else {
-    const [{ data: docs }, { data: profile }] = await Promise.all([
-      supabase!.from("documents").select("name, content").order("id"),
-      supabase!.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
-    ]);
-    contact.name = profile?.name ?? "";
-    contact.phone = profile?.phone ?? "";
-    contact.location = profile?.location ?? "";
-    contact.linkedin = profile?.linkedin ?? "";
-    contact.website = profile?.website ?? "";
-    const context = (docs ?? [])
+    const contact: Contact = {
+      name: body.contact?.name ?? "",
+      email: demoEmail || "demo@forume.app",
+      phone: body.contact?.phone ?? "",
+      location: body.contact?.location ?? "",
+      linkedin: body.contact?.linkedin ?? "",
+      website: body.contact?.website ?? "",
+    };
+    const docs: { name: string; content: string }[] = Array.isArray(body.documents)
+      ? body.documents.filter(
+          (d: unknown): d is { name: string; content: string } =>
+            !!d && typeof (d as { content?: unknown }).content === "string",
+        )
+      : [];
+    const context = docs
       .map((d) => `### ${d.name}\n${d.content}`)
       .join("\n\n")
       .slice(0, CONTEXT_BUDGET);
+
+    let resume: Resume = DEMO_RESUME;
+    let cover = DEMO_COVER;
+    let keywords = DEMO_KEYWORDS;
+    let isSample = true;
+
+    if (cfg && context) {
+      try {
+        ({ resume, cover, keywords } = await runPipeline(cfg, context, contact, company, role, jd));
+        isSample = false;
+      } catch (e) {
+        return NextResponse.json(
+          { error: `Generation failed: ${e instanceof Error ? e.message : e}` },
+          { status: 502 },
+        );
+      }
+    }
+
+    const ats = atsCheck(resume, contact, keywords);
+    return NextResponse.json({
+      id: `demo-${Date.now()}`,
+      resume, cover_letter: cover, ats,
+      is_demo: isSample,
+      engine_used: isSample ? null : cfg!.model,
+      created_at: new Date().toISOString(),
+    });
+  }
+
+  /* ---------- signed-in mode: documents come from Supabase ---------- */
+  const supabase = supabaseAsUser(token);
+  const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+  if (userErr || !userData.user) {
+    return NextResponse.json({ error: "Session expired — sign in again." }, { status: 401 });
+  }
+  const user = userData.user;
+
+  const [{ data: docs }, { data: profile }] = await Promise.all([
+    supabase.from("documents").select("name, content").order("id"),
+    supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
+  ]);
+  const contact: Contact = {
+    name: profile?.name ?? "",
+    email: user.email ?? "",
+    phone: profile?.phone ?? "",
+    location: profile?.location ?? "",
+    linkedin: profile?.linkedin ?? "",
+    website: profile?.website ?? "",
+  };
+  const context = (docs ?? [])
+    .map((d) => `### ${d.name}\n${d.content}`)
+    .join("\n\n")
+    .slice(0, CONTEXT_BUDGET);
+
+  let resume: Resume;
+  let cover: string;
+  let keywords: string[];
+  let isSample = false;
+
+  if (!cfg) {
+    resume = DEMO_RESUME;
+    cover = DEMO_COVER;
+    keywords = DEMO_KEYWORDS;
+    isSample = true;
+  } else {
     if (!context) {
       return NextResponse.json(
         { error: "Your profile is empty — add a resume or notes in Profile first." },
@@ -132,29 +208,7 @@ export async function POST(request: Request) {
       );
     }
     try {
-      const analysisRaw = await chat(
-        cfg, prompts.ANALYSIS_SYSTEM,
-        prompts.analysisUser(context, company || "(not specified)", role || "(see JD)", jd),
-        true,
-      );
-      const analysis = extractJson<{ top_keywords?: string[] }>(analysisRaw);
-      const analysisStr = JSON.stringify(analysis, null, 1);
-
-      const resumeRaw = await chat(
-        cfg, prompts.RESUME_SYSTEM,
-        prompts.resumeUser(context, company || "(not specified)", role || "(see JD)", jd, analysisStr),
-        true,
-      );
-      resume = extractJson<Resume>(resumeRaw);
-
-      cover = (
-        await chat(
-          cfg, prompts.COVER_SYSTEM,
-          prompts.coverUser(context, contact.name, company || "(not specified)", role || "(see JD)", jd, analysisStr),
-          false,
-        )
-      ).trim();
-      keywords = (analysis.top_keywords ?? []).filter((k) => typeof k === "string");
+      ({ resume, cover, keywords } = await runPipeline(cfg, context, contact, company, role, jd));
     } catch (e) {
       return NextResponse.json(
         { error: `Generation failed: ${e instanceof Error ? e.message : e}` },
@@ -164,23 +218,13 @@ export async function POST(request: Request) {
   }
 
   const ats = atsCheck(resume, contact, keywords);
-
-  if (demoMode) {
-    return NextResponse.json({
-      id: `demo-${Date.now()}`,
-      resume, cover_letter: cover, ats,
-      is_demo: true,
-      created_at: new Date().toISOString(),
-    });
-  }
-
-  const { data: inserted, error: insertErr } = await supabase!
+  const { data: inserted, error: insertErr } = await supabase
     .from("applications")
     .insert({
       user_id: user.id,
       company, role, jd, template,
       resume, cover_letter: cover, ats,
-      is_demo: isDemo,
+      is_demo: isSample,
     })
     .select("id, created_at")
     .single();
@@ -191,7 +235,8 @@ export async function POST(request: Request) {
   return NextResponse.json({
     id: inserted.id,
     resume, cover_letter: cover, ats,
-    is_demo: isDemo,
+    is_demo: isSample,
+    engine_used: isSample ? null : cfg!.model,
     created_at: inserted.created_at,
   });
 }
