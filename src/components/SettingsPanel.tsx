@@ -4,17 +4,15 @@ import { useState, useEffect } from "react";
 import { LLM_PROVIDERS, type LLMConfig, getLLMConfig, setLLMConfig } from "@/lib/llm-providers";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const [config, setConfig] = useState<LLMConfig | null>(null);
+  const [config, setConfig] = useState<LLMConfig>(() => {
+    if (typeof window === "undefined") {
+      return { provider: "groq", apiKey: "", model: "mixtral-8x7b-32768" };
+    }
+    return getLLMConfig() || { provider: "groq", apiKey: "", model: "mixtral-8x7b-32768" };
+  });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [testing, setTesting] = useState(false);
-
-  useEffect(() => {
-    const current = getLLMConfig();
-    if (current) {
-      setConfig(current);
-    }
-  }, []);
 
   async function handleSave() {
     if (!config) return;
