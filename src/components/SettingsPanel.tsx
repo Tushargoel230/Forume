@@ -6,9 +6,9 @@ import { LLM_PROVIDERS, type LLMConfig, getLLMConfig, setLLMConfig, getDefaultAp
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [config, setConfig] = useState<LLMConfig>(() => {
     if (typeof window === "undefined") {
-      return { provider: "groq", apiKey: "", model: "mixtral-8x7b-32768" };
+      return { provider: "groq", apiKey: "", model: "llama-3.1-70b-versatile" };
     }
-    return getLLMConfig() || { provider: "groq", apiKey: "", model: "mixtral-8x7b-32768" };
+    return getLLMConfig() || { provider: "groq", apiKey: "", model: "llama-3.1-70b-versatile" };
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
