@@ -31,7 +31,11 @@ export default function SignIn() {
     setError("");
     const { error } = await supabaseBrowser().auth.signInWithOtp({
       email: email.trim(),
-      options: { shouldCreateUser: true },
+      options: {
+        shouldCreateUser: true,
+        // makes the email's link land back in the app and complete sign-in
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     });
     setBusy(false);
     if (error) setError(error.message);
@@ -117,8 +121,9 @@ export default function SignIn() {
             <form onSubmit={verify}>
               <h1 className="font-display text-3xl mb-2">Check your inbox.</h1>
               <p className="text-stone text-sm mb-7">
-                We sent a six-digit code to <b className="text-ink">{email}</b>.
-                It can take a minute — check spam too.
+                We emailed <b className="text-ink">{email}</b>. Enter the
+                six-digit code below — or just click the link in the email.
+                It can take a minute; check spam too.
               </p>
               <label className="mb-2 block text-sm font-medium" htmlFor="code">Code</label>
               <input
