@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#fffefb"/>
+  <g transform="rotate(-6 16 16)">
+    <rect x="5" y="5" width="22" height="22" rx="4" fill="none" stroke="#c5283d" stroke-width="2.6"/>
+    <text x="16" y="22.5" text-anchor="middle" font-family="Georgia, serif" font-style="italic" font-size="16" font-weight="700" fill="#c5283d">F</text>
+  </g>
+</svg>

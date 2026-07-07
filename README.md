@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Forume
 
-## Getting Started
+Tailored resumes and cover letters from your real experience — ATS-checked,
+typeset, honest. Live at **https://forume-jaxx24.vercel.app**.
 
-First, run the development server:
+Next.js 16 · Tailwind v4 · Supabase (auth + data + rate limiting) · any
+OpenAI-compatible LLM. Everything runs on free tiers.
+
+## How it works
+
+- **Demo mode (default):** no account. Documents, contact info, and history
+  live in the visitor's browser (localStorage) and are sent per-request to
+  `/api/generate`. Limited to 5 generations/day per IP.
+- **Signed in:** Google or email-code sign-in via Supabase. Data moves to
+  Postgres with row-level security; 25 generations/day. On first sign-in the
+  app offers to import the browser demo data.
+- **Engine:** server env vars only. Production uses Groq
+  (`llama-3.3-70b-versatile`) with automatic retry on `LLM_FALLBACK_MODEL`.
+  Local dev points at Ollama.
+- **Uploads:** PDF (pdfjs), DOCX (mammoth), TXT/MD — parsed in the browser,
+  stored as plain text. Scanned PDFs get a clear "paste instead" error.
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev        # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+`.env.local` is pre-configured for local Ollama (`ollama serve` +
+`ollama pull qwen3.5`). Without any LLM env vars the app runs in labeled
+sample mode.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Var | Required | Notes |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` | for accounts + rate limits | safe to expose; RLS protects data |
+| `LLM_BASE_URL` / `LLM_MODEL` | for real generation | OpenAI-compatible endpoint |
+| `LLM_API_KEY` | hosted providers | server-side only |
+| `LLM_FALLBACK_MODEL` (+ optional `_BASE_URL`, `_API_KEY`) | no | retried when the primary fails |
+| `SUPABASE_SERVICE_ROLE_KEY` | no | hardens the rate limiter (falls back to anon key) |
 
-## Learn More
+**Never** put an LLM key in a `NEXT_PUBLIC_*` var — those are compiled into
+the public browser bundle.
 
-To learn more about Next.js, take a look at the following resources:
+## One-time dashboard setup (both free)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+1. **Google sign-in:** [Google Cloud Console](https://console.cloud.google.com)
+   → APIs & Services → Credentials → Create OAuth client (Web application) →
+   authorized redirect URI
+   `https://xaaaqtsiguclgrhxmura.supabase.co/auth/v1/callback` → copy client
+   ID + secret into [Supabase](https://supabase.com/dashboard) → Authentication
+   → Providers → Google → enable.
+2. **Reliable OTP emails:** [Resend](https://resend.com) free account → API
+   key → Supabase → Authentication → SMTP Settings: host `smtp.resend.com`,
+   port 465, user `resend`, password = API key, sender
+   `onboarding@resend.dev`. (Without this, Supabase's built-in sender allows
+   only ~2 emails/hour — fine for testing, not for users.)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Deploy
 
-## Deploy on Vercel
+Pushes to `main` auto-deploy via the connected Vercel project (`forume`,
+team `jaxx24`). Manual deploy: `npx vercel deploy --prod --yes`.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Production env vars are set on Vercel (Groq key server-side). Note: Vercel's
+Hobby plan is for non-commercial use — upgrade to Pro before charging money.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Related
+
+`../ResumeForge` — the original local desktop version (FastAPI + Ollama, six
+templates, ATS auto-fix). The web app is its productized sibling.

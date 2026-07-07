@@ -1,8 +1,9 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import { supabaseAsUser } from "@/lib/supabase";
 import { atsCheck } from "@/lib/ats";
 import { DEMO_COVER, DEMO_KEYWORDS, DEMO_RESUME } from "@/lib/demo";
-import { LLM_PROVIDERS, type ProviderType } from "@/lib/llm-providers";
 import * as prompts from "@/lib/prompts";
 import type { Contact, Resume } from "@/lib/types";
 
@@ -17,29 +18,6 @@ function llmConfigFromEnv(): LlmConfig | null {
   const model = process.env.LLM_MODEL;
   if (!baseUrl || !model) return null;
   return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey: process.env.LLM_API_KEY ?? "", model };
-}
-
-/** Client-sent config: {provider, apiKey, model, baseUrl?}. The base URL is
-    resolved through the provider allowlist so this server only ever calls
-    known LLM hosts (custom URLs allowed for local Ollama only). */
-function llmConfigFromHeader(header: string): LlmConfig | null {
-  try {
-    const cfg = JSON.parse(header) as {
-      provider?: ProviderType; apiKey?: string; model?: string; baseUrl?: string;
-    };
-    if (!cfg.provider || !cfg.model) return null;
-    const provider = LLM_PROVIDERS[cfg.provider];
-    if (!provider) return null;
-    let baseUrl = provider.baseUrl;
-    if (cfg.provider === "ollama" && cfg.baseUrl) {
-      const url = new URL(cfg.baseUrl);
-      if (!["localhost", "127.0.0.1"].includes(url.hostname)) return null;
-      baseUrl = cfg.baseUrl;
-    }
-    return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey: cfg.apiKey ?? "", model: cfg.model };
-  } catch {
-    return null;
-  }
 }
 
 async function chat(cfg: LlmConfig, system: string, user: string, jsonMode: boolean): Promise<string> {
@@ -73,6 +51,33 @@ function extractJson<T>(text: string): T {
   return JSON.parse(t.slice(start, end + 1)) as T;
 }
 
+const DEMO_DAILY_LIMIT = 5;
+const USER_DAILY_LIMIT = 25;
+
+/** Atomic daily counter via the increment_usage() Postgres function.
+    Fails open: if the limiter itself is unavailable, generation proceeds. */
+async function withinDailyLimit(identifier: string, limit: number): Promise<boolean> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return true;
+  try {
+    const admin = createClient(url, key);
+    const { data, error } = await admin.rpc("increment_usage", {
+      p_identifier: identifier,
+      p_limit: limit,
+    });
+    if (error) return true;
+    return Boolean(data);
+  } catch {
+    return true;
+  }
+}
+
+function clientIpHash(request: Request): string {
+  const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
+  return createHash("sha256").update(ip).digest("hex").slice(0, 32);
+}
+
 function fallbackConfig(primary: LlmConfig): LlmConfig | null {
   const model = process.env.LLM_FALLBACK_MODEL;
   if (!model || model === primary.model) return null;
@@ -102,7 +107,7 @@ function friendlyLlmError(e: unknown): string {
     return "The writing engine is at capacity right now — try again in a minute.";
   }
   if (msg.includes(" 401") || msg.includes(" 403")) {
-    return "The engine rejected the API key — check it under AI Settings.";
+    return "The writing engine rejected the request — please try again later.";
   }
   return `Generation failed: ${msg}`;
 }
@@ -149,7 +154,7 @@ export async function POST(request: Request) {
   const template: string = body.template ?? "slate";
   if (!jd) return NextResponse.json({ error: "Paste a job description first." }, { status: 422 });
 
-  const cfg = llmConfigFromHeader(request.headers.get("x-llm-config") || "") || llmConfigFromEnv();
+  const cfg = llmConfigFromEnv();
 
   /* ---------- demo mode: no database; documents come from the client ---------- */
   if (demoMode) {
@@ -178,6 +183,12 @@ export async function POST(request: Request) {
     let isSample = true;
 
     if (cfg && context) {
+      if (!(await withinDailyLimit(`ip:${clientIpHash(request)}`, DEMO_DAILY_LIMIT))) {
+        return NextResponse.json(
+          { error: "Daily demo limit reached — sign in for a higher limit, or come back tomorrow." },
+          { status: 429 },
+        );
+      }
       try {
         ({ resume, cover, keywords } = await runWithFallback(cfg, context, contact, company, role, jd));
         isSample = false;
@@ -239,6 +250,12 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "Your profile is empty — add a resume or notes in Profile first." },
         { status: 422 },
+      );
+    }
+    if (!(await withinDailyLimit(`user:${user.id}`, USER_DAILY_LIMIT))) {
+      return NextResponse.json(
+        { error: "You've reached today's generation limit — it resets tomorrow." },
+        { status: 429 },
       );
     }
     try {

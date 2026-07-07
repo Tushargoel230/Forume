@@ -338,7 +338,10 @@ export default function Landing() {
               </Reveal>
             ))}
           </div>
-          <p className="mt-6 text-xs text-stone/70">Early-access pricing, subject to change.</p>
+          <p className="mt-6 text-xs text-stone/70">
+            Early access: everything is free while we build. Listed prices show
+            where Forume is headed.
+          </p>
         </div>
       </section>
 
@@ -370,6 +373,11 @@ export default function Landing() {
           <p className="text-xs text-stone">
             Honest by design — Forume never invents what you didn&apos;t do.
           </p>
+          <nav className="flex gap-5 text-xs text-stone">
+            <Link href="/privacy" className="hover:text-ink">Privacy</Link>
+            <Link href="/terms" className="hover:text-ink">Terms</Link>
+            <Link href="/imprint" className="hover:text-ink">Imprint</Link>
+          </nav>
         </div>
       </footer>
     </main>

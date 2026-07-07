@@ -7,12 +7,12 @@ import type { Session } from "@supabase/supabase-js";
 import { supabaseBrowser } from "@/lib/supabase";
 import { Logo } from "@/components/Logo";
 import { ResumeSheet } from "@/components/ResumeSheet";
-import { SettingsPanel } from "@/components/SettingsPanel";
-import { getLLMConfig } from "@/lib/llm-providers";
+import { extractText } from "@/lib/extract-text";
+import { maybeImportDemoData } from "@/lib/import-demo";
 import type { Application, AtsReport, Contact, Resume } from "@/lib/types";
 
 type Doc = { id: number; name: string; content: string; created_at: string };
-type Tab = "new" | "profile" | "history" | "settings";
+type Tab = "new" | "profile" | "history";
 type ResultTab = "resume" | "cover" | "ats";
 type DemoSession = { access_token: string; user: { id: string; email: string } };
 
@@ -40,27 +40,25 @@ export default function Dashboard() {
   const [tab, setTab] = useState<Tab>("new");
 
   useEffect(() => {
-    const demoSession = getDemoSession();
-    if (demoSession) {
-      setSession(demoSession);
-      setReady(true);
-      return;
-    }
-
-    if (typeof window !== "undefined") {
-      const fallbackEmail = "demo@forume.app";
-      window.localStorage.setItem("forume-demo-user", fallbackEmail);
-      setSession({
-        access_token: `demo-${fallbackEmail}`,
-        user: { id: `demo-${encodeURIComponent(fallbackEmail)}`, email: fallbackEmail },
-      });
-      setReady(true);
-      return;
-    }
-
-    supabase.auth.getSession().then(({ data }) => {
-      if (!data.session) router.replace("/signin");
-      else setSession(data.session);
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (data.session) {
+        // a real account always wins over demo state
+        await maybeImportDemoData(supabase, data.session);
+        setSession(data.session);
+        setReady(true);
+        return;
+      }
+      const demoSession = getDemoSession();
+      if (demoSession) {
+        setSession(demoSession);
+      } else {
+        const fallbackEmail = "demo@forume.app";
+        window.localStorage.setItem("forume-demo-user", fallbackEmail);
+        setSession({
+          access_token: `demo-${fallbackEmail}`,
+          user: { id: `demo-${encodeURIComponent(fallbackEmail)}`, email: fallbackEmail },
+        });
+      }
       setReady(true);
     });
   }, [supabase, router]);
@@ -82,7 +80,6 @@ export default function Dashboard() {
                 ["new", "New application"],
                 ["profile", "Profile"],
                 ["history", "History"],
-                ["settings", "AI Settings"],
               ] as [Tab, string][]
             ).map(([id, label]) => (
               <button
@@ -96,21 +93,25 @@ export default function Dashboard() {
               </button>
             ))}
           </nav>
-          <button
-            onClick={async () => {
-              const demoSession = getDemoSession();
-              if (demoSession) {
-                clearDemoSession();
-                router.replace("/");
-                return;
-              }
-              await supabase.auth.signOut();
-              router.replace("/");
-            }}
-            className="text-sm text-stone hover:text-ink"
-          >
-            Sign out
-          </button>
+          {session.access_token.startsWith("demo-") ? (
+            <Link href="/signin" className="text-sm font-semibold text-crimson hover:underline">
+              Sign in to save your work
+            </Link>
+          ) : (
+            <span className="flex items-center gap-3">
+              <span className="hidden text-xs text-stone sm:inline">{session.user.email}</span>
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  clearDemoSession();
+                  router.replace("/");
+                }}
+                className="text-sm text-stone hover:text-ink"
+              >
+                Sign out
+              </button>
+            </span>
+          )}
         </div>
       </header>
 
@@ -118,7 +119,6 @@ export default function Dashboard() {
         {tab === "new" && <NewApplication session={session} />}
         {tab === "profile" && <Profile session={session} />}
         {tab === "history" && <History onOpen={() => setTab("new")} />}
-        {tab === "settings" && <SettingsPanel onClose={() => setTab("new")} />}
       </div>
     </main>
   );
@@ -188,7 +188,6 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
     setBusy(true);
     setError("");
     try {
-      const llmConfig = getLLMConfig();
       const isDemo = session.access_token.startsWith("demo-");
       // demo documents live in the browser, so the server needs them per-request
       let documents: { name: string; content: string }[] = [];
@@ -203,7 +202,6 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
           ...(isDemo ? { "X-Demo-Email": session.user.email ?? "" } : {}),
-          ...(llmConfig ? { "X-LLM-Config": JSON.stringify(llmConfig) } : {}),
         },
         body: JSON.stringify({
           jd, company, role, template,
@@ -289,9 +287,8 @@ function ResultPanel({
     <div className="rounded-sm border border-rule bg-paper">
       {result.is_demo && (
         <p className="border-b border-amber bg-amber/10 px-5 py-3 text-sm">
-          <b>Sample output.</b> To generate for real: add your resume text under{" "}
-          <b>Profile</b>, then connect a free engine under <b>AI Settings</b>{" "}
-          (Groq works well) — takes about two minutes.
+          <b>Sample output.</b> Upload your resume under <b>Profile</b> and
+          generate again — Forume will write from your real experience.
         </p>
       )}
       <div className="flex border-b border-rule">
@@ -385,6 +382,9 @@ function Profile({ session }: { session: Session | DemoSession }) {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteName, setNoteName] = useState("");
   const [noteContent, setNoteContent] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [uploadOk, setUploadOk] = useState("");
 
   const load = useCallback(async () => {
     const demoSession = getDemoSession();
@@ -458,21 +458,31 @@ function Profile({ session }: { session: Session | DemoSession }) {
     load();
   }
 
-  async function uploadText(file: File) {
-    const content = await file.text();
-    const demoSession = getDemoSession();
-    if (demoSession && session.access_token.startsWith("demo-")) {
-      const newDoc = { id: Date.now(), name: file.name, content, created_at: new Date().toISOString() };
-      const nextDocs = [newDoc, ...docs];
-      if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-docs", JSON.stringify(nextDocs));
-      setDocs(nextDocs);
-      return;
+  async function uploadFile(file: File) {
+    setUploadError("");
+    setUploadOk("");
+    setUploading(true);
+    try {
+      const content = await extractText(file);
+      const demoSession = getDemoSession();
+      if (demoSession && session.access_token.startsWith("demo-")) {
+        const newDoc = { id: Date.now(), name: file.name, content, created_at: new Date().toISOString() };
+        const nextDocs = [newDoc, ...docs];
+        if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-docs", JSON.stringify(nextDocs));
+        setDocs(nextDocs);
+      } else {
+        const { error } = await supabase.from("documents").insert({
+          user_id: session.user.id, name: file.name, content,
+        });
+        if (error) throw new Error(error.message);
+        await load();
+      }
+      setUploadOk(`✓ ${file.name} — ${(content.length / 1000).toFixed(1)}k characters extracted`);
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploading(false);
     }
-
-    await supabase.from("documents").insert({
-      user_id: session.user.id, name: file.name, content,
-    });
-    load();
   }
 
   return (
@@ -519,25 +529,29 @@ function Profile({ session }: { session: Session | DemoSession }) {
         <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2 mb-5">
           Source documents
         </h2>
-        <div className="flex flex-wrap gap-3 mb-5">
-          <label className="cursor-pointer rounded-md border border-dashed border-ink px-4 py-2.5 text-sm font-semibold hover:bg-ink hover:text-paper transition-colors">
-            Upload text file (.txt, .md)
+        <div className="flex flex-wrap gap-3 mb-3">
+          <label className={`cursor-pointer rounded-md border border-dashed border-ink px-4 py-2.5 text-sm font-semibold transition-colors ${uploading ? "opacity-50" : "hover:bg-ink hover:text-paper"}`}>
+            {uploading ? "Reading file…" : "Upload resume (PDF, DOCX, TXT)"}
             <input
-              type="file" accept=".txt,.md" hidden
-              onChange={(e) => e.target.files?.[0] && uploadText(e.target.files[0])}
+              type="file" accept=".pdf,.docx,.txt,.md" hidden disabled={uploading}
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) uploadFile(f);
+                e.target.value = "";
+              }}
             />
           </label>
           <button
             onClick={() => setNoteOpen(true)}
             className="rounded-md border border-ink px-4 py-2.5 text-sm font-semibold hover:bg-ink hover:text-paper transition-colors"
           >
-            Paste resume or write a note
+            Write a note
           </button>
         </div>
-        <p className="text-xs text-stone mb-4">
-          Tip: open your old resume PDF, select all, copy, and paste it here as
-          a note — that&apos;s all Forume needs.
-        </p>
+        {uploadOk && <p className="mb-3 text-sm text-crimson">{uploadOk}</p>}
+        {uploadError && (
+          <p className="mb-3 rounded-md border border-amber bg-amber/10 px-4 py-3 text-sm">{uploadError}</p>
+        )}
 
         {noteOpen && (
           <div className="rounded-sm border border-rule bg-linen p-4 mb-4">

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Newsreader, Public_Sans } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const newsreader = Newsreader({
@@ -14,9 +15,27 @@ const publicSans = Public_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Forume — resumes tailored to every job, honestly",
+  metadataBase: new URL("https://forume-jaxx24.vercel.app"),
+  title: {
+    default: "Forume — your experience, made undeniable",
+    template: "%s · Forume",
+  },
   description:
-    "Forume turns your real experience into a resume and cover letter tailored to each job description — ATS-checked, beautifully typeset, and honest to the letter.",
+    "Forume tailors your real experience into a resume and cover letter for each job — ATS-checked, beautifully typeset, and honest to the letter.",
+  openGraph: {
+    title: "Forume — your experience, made undeniable",
+    description:
+      "Tailored resumes and cover letters from your real experience. ATS-checked, typeset, honest.",
+    url: "/",
+    siteName: "Forume",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Forume — your experience, made undeniable",
+    description:
+      "Tailored resumes and cover letters from your real experience. ATS-checked, typeset, honest.",
+  },
 };
 
 export default function RootLayout({
@@ -29,7 +48,10 @@ export default function RootLayout({
       lang="en"
       className={`${newsreader.variable} ${publicSans.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        <Analytics />
+      </body>
     </html>
   );
 }
