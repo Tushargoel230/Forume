@@ -104,10 +104,10 @@ export default function Landing() {
             <a href="#pricing" className="hover:text-ink">Pricing</a>
           </div>
           <Link
-            href="/signin"
+            href="/app"
             className="rounded-md bg-pine px-4 py-2 text-sm font-semibold text-paper hover:bg-pine-deep transition-colors"
           >
-            Sign in
+            Open demo
           </Link>
         </nav>
       </header>
@@ -131,10 +131,10 @@ export default function Landing() {
           </p>
           <div className="mt-9 flex flex-wrap gap-4">
             <Link
-              href="/signin"
+              href="/app"
               className="rounded-md bg-pine px-6 py-3.5 font-semibold text-paper hover:bg-pine-deep transition-colors"
             >
-              Start your first application
+              Try the demo
             </Link>
             <a
               href="#how"

@@ -11,19 +11,50 @@ import type { Application, AtsReport, Contact, Resume } from "@/lib/types";
 type Doc = { id: number; name: string; content: string; created_at: string };
 type Tab = "new" | "profile" | "history";
 type ResultTab = "resume" | "cover" | "ats";
+type DemoSession = { access_token: string; user: { id: string; email: string } };
 
 const EMPTY_CONTACT: Contact = {
   name: "", email: "", phone: "", location: "", linkedin: "", website: "",
 };
 
+function getDemoSession(): DemoSession | null {
+  if (typeof window === "undefined") return null;
+  const email = window.localStorage.getItem("forume-demo-user")?.trim();
+  if (!email) return null;
+  return { access_token: `demo-${email}`, user: { id: `demo-${encodeURIComponent(email)}`, email } };
+}
+
+function clearDemoSession() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem("forume-demo-user");
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const supabase = supabaseBrowser();
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | DemoSession | null>(null);
   const [ready, setReady] = useState(false);
   const [tab, setTab] = useState<Tab>("new");
 
   useEffect(() => {
+    const demoSession = getDemoSession();
+    if (demoSession) {
+      setSession(demoSession);
+      setReady(true);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      const fallbackEmail = "demo@forume.app";
+      window.localStorage.setItem("forume-demo-user", fallbackEmail);
+      setSession({
+        access_token: `demo-${fallbackEmail}`,
+        user: { id: `demo-${encodeURIComponent(fallbackEmail)}`, email: fallbackEmail },
+      });
+      setReady(true);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       if (!data.session) router.replace("/signin");
       else setSession(data.session);
@@ -63,6 +94,12 @@ export default function Dashboard() {
           </nav>
           <button
             onClick={async () => {
+              const demoSession = getDemoSession();
+              if (demoSession) {
+                clearDemoSession();
+                router.replace("/");
+                return;
+              }
               await supabase.auth.signOut();
               router.replace("/");
             }}
@@ -89,7 +126,7 @@ export function setOpenedApplication(a: Application) {
   openedApplication = a;
 }
 
-function NewApplication({ session }: { session: Session }) {
+function NewApplication({ session }: { session: Session | DemoSession }) {
   const [jd, setJd] = useState("");
   const [company, setCompany] = useState("");
   const [role, setRole] = useState("");
@@ -103,6 +140,21 @@ function NewApplication({ session }: { session: Session }) {
 
   useEffect(() => {
     openedApplication = null;
+    const demoSession = getDemoSession();
+    if (demoSession && session.access_token.startsWith("demo-")) {
+      const stored = typeof window !== "undefined" ? window.localStorage.getItem("forume-demo-contact") : null;
+      const parsed = stored ? JSON.parse(stored) : null;
+      setContact({
+        name: parsed?.name ?? "",
+        email: session.user.email ?? "",
+        phone: parsed?.phone ?? "",
+        location: parsed?.location ?? "",
+        linkedin: parsed?.linkedin ?? "",
+        website: parsed?.website ?? "",
+      });
+      return;
+    }
+
     supabase
       .from("profiles")
       .select("*")
@@ -129,6 +181,7 @@ function NewApplication({ session }: { session: Session }) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
+          "X-Demo-Email": session.user.email ?? "",
         },
         body: JSON.stringify({ jd, company, role, template }),
       });
@@ -299,7 +352,7 @@ function AtsPanel({ ats }: { ats: AtsReport }) {
 
 /* ---------------- profile ---------------- */
 
-function Profile({ session }: { session: Session }) {
+function Profile({ session }: { session: Session | DemoSession }) {
   const supabase = supabaseBrowser();
   const [contact, setContact] = useState<Contact>(EMPTY_CONTACT);
   const [docs, setDocs] = useState<Doc[]>([]);
@@ -309,6 +362,20 @@ function Profile({ session }: { session: Session }) {
   const [noteContent, setNoteContent] = useState("");
 
   const load = useCallback(async () => {
+    const demoSession = getDemoSession();
+    if (demoSession && session.access_token.startsWith("demo-")) {
+      const storedDocs = typeof window !== "undefined" ? window.localStorage.getItem("forume-demo-docs") : null;
+      const storedContact = typeof window !== "undefined" ? window.localStorage.getItem("forume-demo-contact") : null;
+      if (storedContact) {
+        const parsed = JSON.parse(storedContact);
+        setContact({ ...EMPTY_CONTACT, ...parsed, email: session.user.email ?? "" });
+      } else {
+        setContact((c) => ({ ...c, email: session.user.email ?? "" }));
+      }
+      setDocs(storedDocs ? JSON.parse(storedDocs) : []);
+      return;
+    }
+
     const [{ data: p }, { data: d }] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", session.user.id).maybeSingle(),
       supabase.from("documents").select("id, name, content, created_at").order("id", { ascending: false }),
@@ -321,6 +388,16 @@ function Profile({ session }: { session: Session }) {
   useEffect(() => { load(); }, [load]);
 
   async function saveContact() {
+    const demoSession = getDemoSession();
+    if (demoSession && session.access_token.startsWith("demo-")) {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("forume-demo-contact", JSON.stringify(contact));
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      return;
+    }
+
     await supabase.from("profiles").upsert({
       user_id: session.user.id,
       name: contact.name, phone: contact.phone, location: contact.location,
@@ -333,6 +410,18 @@ function Profile({ session }: { session: Session }) {
 
   async function addNote() {
     if (!noteContent.trim()) return;
+    const demoSession = getDemoSession();
+    if (demoSession && session.access_token.startsWith("demo-")) {
+      const newDoc = { id: Date.now(), name: noteName.trim() || "Note", content: noteContent, created_at: new Date().toISOString() };
+      const nextDocs = [newDoc, ...docs];
+      if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-docs", JSON.stringify(nextDocs));
+      setDocs(nextDocs);
+      setNoteOpen(false);
+      setNoteName("");
+      setNoteContent("");
+      return;
+    }
+
     await supabase.from("documents").insert({
       user_id: session.user.id,
       name: noteName.trim() || "Note",
@@ -346,6 +435,15 @@ function Profile({ session }: { session: Session }) {
 
   async function uploadText(file: File) {
     const content = await file.text();
+    const demoSession = getDemoSession();
+    if (demoSession && session.access_token.startsWith("demo-")) {
+      const newDoc = { id: Date.now(), name: file.name, content, created_at: new Date().toISOString() };
+      const nextDocs = [newDoc, ...docs];
+      if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-docs", JSON.stringify(nextDocs));
+      setDocs(nextDocs);
+      return;
+    }
+
     await supabase.from("documents").insert({
       user_id: session.user.id, name: file.name, content,
     });
@@ -454,6 +552,13 @@ function Profile({ session }: { session: Session }) {
               <button
                 onClick={async () => {
                   if (!confirm(`Delete "${d.name}"?`)) return;
+                  const demoSession = getDemoSession();
+                  if (demoSession && session.access_token.startsWith("demo-")) {
+                    const nextDocs = docs.filter((doc) => doc.id !== d.id);
+                    if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-docs", JSON.stringify(nextDocs));
+                    setDocs(nextDocs);
+                    return;
+                  }
                   await supabase.from("documents").delete().eq("id", d.id);
                   load();
                 }}
@@ -476,6 +581,13 @@ function History({ onOpen }: { onOpen: () => void }) {
   const [apps, setApps] = useState<Application[]>([]);
 
   const load = useCallback(async () => {
+    const demoSession = getDemoSession();
+    if (demoSession) {
+      const stored = typeof window !== "undefined" ? window.localStorage.getItem("forume-demo-applications") : null;
+      setApps(stored ? JSON.parse(stored) : []);
+      return;
+    }
+
     const { data } = await supabase
       .from("applications")
       .select("id, company, role, jd, resume, cover_letter, ats, template, is_demo, created_at")
@@ -512,6 +624,13 @@ function History({ onOpen }: { onOpen: () => void }) {
               <button
                 onClick={async () => {
                   if (!confirm("Delete this application?")) return;
+                  const demoSession = getDemoSession();
+                  if (demoSession) {
+                    const nextApps = apps.filter((app) => app.id !== a.id);
+                    if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-applications", JSON.stringify(nextApps));
+                    setApps(nextApps);
+                    return;
+                  }
                   await supabase.from("applications").delete().eq("id", a.id);
                   load();
                 }}
