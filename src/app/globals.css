@@ -1,26 +1,74 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --linen: #f7f5f0;
+  --paper: #fffefb;
+  --ink: #22271f;
+  --stone: #6b7064;
+  --pine: #1e4d40;
+  --pine-deep: #143830;
+  --amber: #c77e2e;
+  --rule: #e5e1d6;
+  --rule-dark: #cfcaba;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-linen: var(--linen);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-stone: var(--stone);
+  --color-pine: var(--pine);
+  --color-pine-deep: var(--pine-deep);
+  --color-amber: var(--amber);
+  --color-rule: var(--rule);
+  --color-rule-dark: var(--rule-dark);
+  --font-display: var(--font-newsreader), Georgia, serif;
+  --font-body: var(--font-public-sans), system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+html { scroll-behavior: smooth; }
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--linen);
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* crop marks — the brand's print-proof DNA */
+.cropmarks { position: relative; }
+.cropmarks::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background:
+    linear-gradient(var(--ink), var(--ink)) 0 12px / 9px 1px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) 12px 0 / 1px 9px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) 100% 12px / 9px 1px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) calc(100% - 12px) 0 / 1px 9px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) 0 calc(100% - 12px) / 9px 1px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) 12px 100% / 1px 9px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) 100% calc(100% - 12px) / 9px 1px no-repeat,
+    linear-gradient(var(--ink), var(--ink)) calc(100% - 12px) 100% / 1px 9px no-repeat;
+}
+
+/* the approval stamp */
+.stamp {
+  display: inline-block;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  border: 3px solid var(--pine);
+  color: var(--pine);
+  border-radius: 6px;
+  padding: 0.35em 0.7em;
+  transform: rotate(-4deg);
+  text-transform: uppercase;
+}
+
+/* print: only the printable sheet */
+@media print {
+  body * { visibility: hidden; }
+  .print-sheet, .print-sheet * { visibility: visible; }
+  .print-sheet {
+    position: absolute; inset: 0;
+    width: 100%; box-shadow: none !important; border: none !important;
+  }
+  @page { size: letter; margin: 0.5in; }
 }
