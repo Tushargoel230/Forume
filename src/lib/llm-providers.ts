@@ -1,5 +1,6 @@
-// Supported LLM providers with their configurations
-export type ProviderType = "groq" | "together" | "huggingface" | "ollama" | "replicate";
+// Supported LLM providers (all OpenAI-compatible chat/completions endpoints).
+// This list doubles as the server-side allowlist for client-supplied configs.
+export type ProviderType = "groq" | "gemini" | "cerebras" | "openrouter" | "together" | "ollama";
 
 export interface LLMProvider {
   id: ProviderType;
@@ -9,6 +10,7 @@ export interface LLMProvider {
   requiresApiKey: boolean;
   description: string;
   freeLimit: string;
+  keyUrl: string;
   models: { value: string; label: string }[];
 }
 
@@ -26,129 +28,103 @@ export const LLM_PROVIDERS: Record<ProviderType, LLMProvider> = {
     baseUrl: "https://api.groq.com/openai/v1",
     defaultModel: "llama-3.3-70b-versatile",
     requiresApiKey: true,
-    description: "Fastest open-source LLM inference. Lightning-fast responses.",
-    freeLimit: "30 requests/min (2,880/day)",
+    description: "Fastest inference available. Excellent free tier.",
+    freeLimit: "~1,000 requests/day free",
+    keyUrl: "https://console.groq.com/keys",
     models: [
-      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70b (Latest)" },
-      { value: "llama-3.2-90b-vision-preview", label: "Llama 3.2 90b Vision" },
-      { value: "mixtral-8x7b-32768", label: "Mixtral 8x7b" },
+      { value: "llama-3.3-70b-versatile", label: "Llama 3.3 70B (best quality)" },
+      { value: "llama-3.1-8b-instant", label: "Llama 3.1 8B (fastest, higher limits)" },
+    ],
+  },
+  gemini: {
+    id: "gemini",
+    name: "Google Gemini",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    defaultModel: "gemini-2.5-flash",
+    requiresApiKey: true,
+    description: "Google's models via their OpenAI-compatible endpoint.",
+    freeLimit: "Generous free tier (rate-limited per minute)",
+    keyUrl: "https://aistudio.google.com/apikey",
+    models: [
+      { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
+      { value: "gemini-2.5-flash-lite", label: "Gemini 2.5 Flash Lite (higher limits)" },
+    ],
+  },
+  cerebras: {
+    id: "cerebras",
+    name: "Cerebras",
+    baseUrl: "https://api.cerebras.ai/v1",
+    defaultModel: "llama-3.3-70b",
+    requiresApiKey: true,
+    description: "Extremely fast Llama inference on wafer-scale hardware.",
+    freeLimit: "30 requests/min free",
+    keyUrl: "https://cloud.cerebras.ai",
+    models: [{ value: "llama-3.3-70b", label: "Llama 3.3 70B" }],
+  },
+  openrouter: {
+    id: "openrouter",
+    name: "OpenRouter",
+    baseUrl: "https://openrouter.ai/api/v1",
+    defaultModel: "meta-llama/llama-3.3-70b-instruct:free",
+    requiresApiKey: true,
+    description: "One key, many models — including free community models.",
+    freeLimit: "Free models: ~50 requests/day",
+    keyUrl: "https://openrouter.ai/keys",
+    models: [
+      { value: "meta-llama/llama-3.3-70b-instruct:free", label: "Llama 3.3 70B (free)" },
+      { value: "deepseek/deepseek-chat:free", label: "DeepSeek Chat (free)" },
     ],
   },
   together: {
     id: "together",
     name: "Together AI",
     baseUrl: "https://api.together.xyz/v1",
-    defaultModel: "mistralai/Mistral-7B-Instruct-v0.1",
+    defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free",
     requiresApiKey: true,
-    description: "Multiple model options, good performance, affordable.",
-    freeLimit: "1 million tokens/month",
+    description: "Solid open-model hosting with a free Llama endpoint.",
+    freeLimit: "Free Llama 3.3 70B endpoint (rate-limited)",
+    keyUrl: "https://api.together.xyz/settings/api-keys",
     models: [
-      { value: "mistralai/Mistral-7B-Instruct-v0.1", label: "Mistral 7B" },
-      { value: "meta-llama/Llama-2-70b-chat-hf", label: "Llama 2 70b" },
-      { value: "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO", label: "Nous Hermes 2 Mixtral" },
-    ],
-  },
-  huggingface: {
-    id: "huggingface",
-    name: "Hugging Face",
-    baseUrl: "https://api-inference.huggingface.co/v1",
-    defaultModel: "mistralai/Mistral-7B-Instruct-v0.1",
-    requiresApiKey: true,
-    description: "Popular hub for open-source models.",
-    freeLimit: "Limited free tier (32k context)",
-    models: [
-      { value: "mistralai/Mistral-7B-Instruct-v0.1", label: "Mistral 7B" },
-      { value: "meta-llama/Llama-2-70b-chat-hf", label: "Llama 2 70b" },
-      { value: "tiiuae/falcon-7b-instruct", label: "Falcon 7B" },
+      { value: "meta-llama/Llama-3.3-70B-Instruct-Turbo-Free", label: "Llama 3.3 70B (free)" },
     ],
   },
   ollama: {
     id: "ollama",
-    name: "Ollama (Local)",
+    name: "Ollama (local)",
     baseUrl: "http://localhost:11434/v1",
-    defaultModel: "mistral",
+    defaultModel: "qwen3.5",
     requiresApiKey: false,
-    description: "Run models locally on your machine. Completely free, no API calls.",
-    freeLimit: "Unlimited (limited by your hardware)",
+    description: "Run models on your own machine. Free and private.",
+    freeLimit: "Unlimited (your hardware)",
+    keyUrl: "https://ollama.com",
     models: [
-      { value: "mistral", label: "Mistral" },
-      { value: "llama2", label: "Llama 2" },
-      { value: "neural-chat", label: "Neural Chat" },
       { value: "qwen3.5", label: "Qwen 3.5" },
-    ],
-  },
-  replicate: {
-    id: "replicate",
-    name: "Replicate",
-    baseUrl: "https://api.replicate.com/v1",
-    defaultModel: "mistralai/mistral-7b-instruct-v0.2",
-    requiresApiKey: true,
-    description: "Easy-to-use API for hundreds of models.",
-    freeLimit: "$5 free credit (enough for ~1000 requests)",
-    models: [
-      { value: "mistralai/mistral-7b-instruct-v0.2", label: "Mistral 7B Instruct" },
-      { value: "meta/llama-2-70b-chat", label: "Llama 2 70b Chat" },
-      { value: "ninsight/llama-2-13b-chat", label: "Llama 2 13b Chat" },
+      { value: "llama3.2", label: "Llama 3.2" },
+      { value: "gemma4", label: "Gemma 4" },
     ],
   },
 };
 
+const STORAGE_KEY = "forume-llm-config";
+
 export function getLLMConfig(): LLMConfig | null {
-  if (typeof window === "undefined") {
-    // Server-side fallback to env vars
-    const baseUrl = process.env.LLM_BASE_URL;
-    const model = process.env.LLM_MODEL;
-    if (!baseUrl || !model) return null;
-    return {
-      provider: "groq",
-      apiKey: process.env.LLM_API_KEY ?? "",
-      model,
-      baseUrl,
-    };
+  if (typeof window === "undefined") return null;
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (!stored) return null;
+  try {
+    const cfg = JSON.parse(stored) as LLMConfig;
+    return LLM_PROVIDERS[cfg.provider] ? cfg : null;
+  } catch {
+    return null;
   }
-
-  const stored = localStorage.getItem("forume-llm-config");
-  if (stored) {
-    try {
-      return JSON.parse(stored) as LLMConfig;
-    } catch {
-      return null;
-    }
-  }
-
-  // If no stored config, try to use default API key from env
-  const defaultGroqKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
-  if (defaultGroqKey) {
-    return {
-      provider: "groq",
-      apiKey: defaultGroqKey,
-      model: "llama-3.3-70b-versatile",
-    };
-  }
-
-  return null;
 }
 
 export function setLLMConfig(config: LLMConfig): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem("forume-llm-config", JSON.stringify(config));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
 export function clearLLMConfig(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem("forume-llm-config");
-}
-
-export function getDefaultApiKey(provider: ProviderType): string {
-  if (typeof window === "undefined") return "";
-  
-  const envKeyMap: Record<ProviderType, string> = {
-    groq: process.env.NEXT_PUBLIC_GROQ_API_KEY ?? "",
-    together: process.env.NEXT_PUBLIC_TOGETHER_API_KEY ?? "",
-    huggingface: process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY ?? "",
-    ollama: "", // No key needed
-    replicate: process.env.NEXT_PUBLIC_REPLICATE_API_KEY ?? "",
-  };
-  
-  return envKeyMap[provider];
+  localStorage.removeItem(STORAGE_KEY);
 }

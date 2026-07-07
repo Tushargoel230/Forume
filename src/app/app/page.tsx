@@ -89,7 +89,7 @@ export default function Dashboard() {
                 key={id}
                 onClick={() => setTab(id)}
                 className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                  tab === id ? "bg-pine text-paper" : "text-stone hover:text-ink"
+                  tab === id ? "bg-ink text-paper" : "text-stone hover:text-ink"
                 }`}
               >
                 {label}
@@ -229,7 +229,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
   return (
     <div className="grid gap-8 lg:grid-cols-[400px_1fr] items-start">
       <div className="rounded-sm border border-rule bg-paper p-6">
-        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-pine border-b border-rule pb-2 mb-5">
+        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2 mb-5">
           Job spec
         </h2>
         <Field label="Company">
@@ -253,7 +253,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         <button
           onClick={generate}
           disabled={busy}
-          className="w-full rounded-md bg-pine px-5 py-3.5 font-semibold text-paper hover:bg-pine-deep transition-colors disabled:opacity-50"
+          className="w-full rounded-md bg-ink px-5 py-3.5 font-semibold text-paper hover:bg-crimson transition-colors disabled:opacity-50"
         >
           {busy ? "Tailoring… this can take a minute" : "Generate resume & cover letter"}
         </button>
@@ -306,7 +306,7 @@ function ResultPanel({
             key={id}
             onClick={() => setResultTab(id)}
             className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
-              resultTab === id ? "border-pine text-ink" : "border-transparent text-stone hover:text-ink"
+              resultTab === id ? "border-crimson text-ink" : "border-transparent text-stone hover:text-ink"
             }`}
           >
             {label}
@@ -353,7 +353,7 @@ function AtsPanel({ ats }: { ats: AtsReport }) {
       <ul className="divide-y divide-rule">
         {ats.checks.map((c) => (
           <li key={c.name} className="py-3 flex gap-3">
-            <span className={c.passed ? "text-pine font-bold" : "text-amber font-bold"}>
+            <span className={c.passed ? "text-crimson font-bold" : "text-amber font-bold"}>
               {c.passed ? "✓" : "✗"}
             </span>
             <div>
@@ -365,7 +365,7 @@ function AtsPanel({ ats }: { ats: AtsReport }) {
       </ul>
       <div className="mt-5 flex flex-wrap gap-2">
         {ats.keywords_found.map((k) => (
-          <span key={k} className="rounded-sm border border-pine px-2.5 py-0.5 text-xs text-pine">{k}</span>
+          <span key={k} className="rounded-sm border border-crimson px-2.5 py-0.5 text-xs text-crimson">{k}</span>
         ))}
         {ats.keywords_missing.map((k) => (
           <span key={k} className="rounded-sm border border-dashed border-rule-dark px-2.5 py-0.5 text-xs text-stone">{k}</span>
@@ -483,7 +483,7 @@ function Profile({ session }: { session: Session | DemoSession }) {
       </p>
 
       <div className="rounded-sm border border-rule bg-paper p-6 mb-6">
-        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-pine border-b border-rule pb-2 mb-5">
+        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2 mb-5">
           Contact block
         </h2>
         <div className="grid sm:grid-cols-2 gap-x-5">
@@ -508,15 +508,15 @@ function Profile({ session }: { session: Session | DemoSession }) {
         </div>
         <button
           onClick={saveContact}
-          className="rounded-md bg-pine px-5 py-2.5 text-sm font-semibold text-paper hover:bg-pine-deep transition-colors"
+          className="rounded-md bg-ink px-5 py-2.5 text-sm font-semibold text-paper hover:bg-crimson transition-colors"
         >
           Save contact details
         </button>
-        {saved && <span className="ml-3 text-sm text-pine">Saved ✓</span>}
+        {saved && <span className="ml-3 text-sm text-crimson">Saved ✓</span>}
       </div>
 
       <div className="rounded-sm border border-rule bg-paper p-6">
-        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-pine border-b border-rule pb-2 mb-5">
+        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2 mb-5">
           Source documents
         </h2>
         <div className="flex flex-wrap gap-3 mb-5">
@@ -556,7 +556,7 @@ function Profile({ session }: { session: Session | DemoSession }) {
               </button>
               <button
                 onClick={addNote}
-                className="rounded-md bg-pine px-5 py-2 text-sm font-semibold text-paper hover:bg-pine-deep"
+                className="rounded-md bg-ink px-5 py-2 text-sm font-semibold text-paper hover:bg-crimson"
               >
                 Save document
               </button>
@@ -625,7 +625,7 @@ function History({ onOpen }: { onOpen: () => void }) {
   return (
     <div className="max-w-3xl">
       <div className="rounded-sm border border-rule bg-paper p-6">
-        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-pine border-b border-rule pb-2 mb-4">
+        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2 mb-4">
           Past applications
         </h2>
         <ul className="divide-y divide-rule">
@@ -638,7 +638,7 @@ function History({ onOpen }: { onOpen: () => void }) {
             <li key={a.id} className="py-3.5 flex items-center gap-4">
               <button
                 onClick={() => { setOpenedApplication(a); onOpen(); }}
-                className="flex-1 text-left font-medium text-sm hover:text-pine"
+                className="flex-1 text-left font-medium text-sm hover:text-crimson"
               >
                 {[a.role, a.company].filter(Boolean).join(" @ ") || "Untitled application"}
                 {a.is_demo && <span className="ml-2 text-xs text-amber">(sample)</span>}
@@ -674,7 +674,7 @@ function History({ onOpen }: { onOpen: () => void }) {
 /* ---------------- shared bits ---------------- */
 
 const inputCls =
-  "w-full rounded-md border border-rule-dark bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-pine";
+  "w-full rounded-md border border-rule-dark bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink";
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

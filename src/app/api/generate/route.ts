@@ -73,6 +73,40 @@ function extractJson<T>(text: string): T {
   return JSON.parse(t.slice(start, end + 1)) as T;
 }
 
+function fallbackConfig(primary: LlmConfig): LlmConfig | null {
+  const model = process.env.LLM_FALLBACK_MODEL;
+  if (!model || model === primary.model) return null;
+  return {
+    baseUrl: (process.env.LLM_FALLBACK_BASE_URL ?? primary.baseUrl).replace(/\/$/, ""),
+    apiKey: process.env.LLM_FALLBACK_API_KEY ?? primary.apiKey,
+    model,
+  };
+}
+
+async function runWithFallback(
+  cfg: LlmConfig, context: string, contact: Contact,
+  company: string, role: string, jd: string,
+): Promise<{ resume: Resume; cover: string; keywords: string[] }> {
+  try {
+    return await runPipeline(cfg, context, contact, company, role, jd);
+  } catch (e) {
+    const fb = fallbackConfig(cfg);
+    if (!fb) throw e;
+    return await runPipeline(fb, context, contact, company, role, jd);
+  }
+}
+
+function friendlyLlmError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (msg.includes(" 429")) {
+    return "The writing engine is at capacity right now — try again in a minute.";
+  }
+  if (msg.includes(" 401") || msg.includes(" 403")) {
+    return "The engine rejected the API key — check it under AI Settings.";
+  }
+  return `Generation failed: ${msg}`;
+}
+
 async function runPipeline(
   cfg: LlmConfig, context: string, contact: Contact,
   company: string, role: string, jd: string,
@@ -145,11 +179,11 @@ export async function POST(request: Request) {
 
     if (cfg && context) {
       try {
-        ({ resume, cover, keywords } = await runPipeline(cfg, context, contact, company, role, jd));
+        ({ resume, cover, keywords } = await runWithFallback(cfg, context, contact, company, role, jd));
         isSample = false;
       } catch (e) {
         return NextResponse.json(
-          { error: `Generation failed: ${e instanceof Error ? e.message : e}` },
+          { error: friendlyLlmError(e) },
           { status: 502 },
         );
       }
@@ -208,10 +242,10 @@ export async function POST(request: Request) {
       );
     }
     try {
-      ({ resume, cover, keywords } = await runPipeline(cfg, context, contact, company, role, jd));
+      ({ resume, cover, keywords } = await runWithFallback(cfg, context, contact, company, role, jd));
     } catch (e) {
       return NextResponse.json(
-        { error: `Generation failed: ${e instanceof Error ? e.message : e}` },
+        { error: friendlyLlmError(e) },
         { status: 502 },
       );
     }

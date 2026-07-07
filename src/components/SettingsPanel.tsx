@@ -1,197 +1,158 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { LLM_PROVIDERS, type LLMConfig, getLLMConfig, setLLMConfig, getDefaultApiKey } from "@/lib/llm-providers";
+import { useState } from "react";
+import {
+  LLM_PROVIDERS, type LLMConfig, type ProviderType,
+  getLLMConfig, setLLMConfig,
+} from "@/lib/llm-providers";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const [config, setConfig] = useState<LLMConfig>(() => {
-    if (typeof window === "undefined") {
-      return { provider: "groq", apiKey: "", model: "llama-3.1-70b-versatile" };
-    }
-    return getLLMConfig() || { provider: "groq", apiKey: "", model: "llama-3.1-70b-versatile" };
-  });
-  const [saving, setSaving] = useState(false);
+  const [config, setConfig] = useState<LLMConfig>(() =>
+    (typeof window !== "undefined" && getLLMConfig()) || {
+      provider: "groq", apiKey: "", model: LLM_PROVIDERS.groq.defaultModel,
+    },
+  );
   const [message, setMessage] = useState("");
   const [testing, setTesting] = useState(false);
 
-  async function handleSave() {
-    if (!config) return;
-    setSaving(true);
-    setMessage("");
+  const provider = LLM_PROVIDERS[config.provider];
 
-    try {
-      setLLMConfig(config);
-      setMessage("✓ Configuration saved!");
-      setTimeout(() => setMessage(""), 2000);
-    } catch (e) {
-      setMessage(`✗ Error: ${e instanceof Error ? e.message : "Unknown error"}`);
-    } finally {
-      setSaving(false);
-    }
+  function switchProvider(id: ProviderType) {
+    setConfig({ provider: id, apiKey: "", model: LLM_PROVIDERS[id].defaultModel });
+    setMessage("");
   }
 
-  async function handleTest() {
-    if (!config) return;
+  function save() {
+    setLLMConfig(config);
+    setMessage("✓ Saved. New applications will use this engine.");
+  }
+
+  async function test() {
     setTesting(true);
     setMessage("Testing connection…");
-
     try {
-      const response = await fetch("/api/test-llm", {
+      const res = await fetch("/api/test-llm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),
       });
-
-      const data = await response.json();
-      if (!response.ok) {
-        setMessage(`✗ Error: ${data.error}`);
-      } else {
-        setMessage(`✓ Connection successful! Response time: ${data.time}ms`);
-        setTimeout(() => setMessage(""), 3000);
-      }
+      const data = await res.json();
+      setMessage(res.ok ? `✓ Connected — responded in ${data.time}ms.` : `✗ ${data.error}`);
     } catch (e) {
-      setMessage(`✗ Error: ${e instanceof Error ? e.message : "Network error"}`);
+      setMessage(`✗ ${e instanceof Error ? e.message : "Network error"}`);
     } finally {
       setTesting(false);
     }
   }
 
-  if (!config) {
-    return (
-      <div className="rounded-sm border border-rule bg-paper p-6">
-        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-pine border-b border-rule pb-2 mb-5">
-          AI Model Settings
-        </h2>
-        <p className="text-stone text-sm">Loading configuration…</p>
-      </div>
-    );
-  }
-
-  const provider = LLM_PROVIDERS[config.provider];
+  const inputCls =
+    "w-full rounded-md border border-rule-dark bg-white px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink";
 
   return (
-    <div className="rounded-sm border border-rule bg-paper p-6">
-      <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-pine border-b border-rule pb-2 mb-5">
-        AI Model Settings
-      </h2>
+    <div className="max-w-2xl">
+      <p className="mb-8 leading-relaxed text-stone">
+        Forume ships with a built-in engine. Connect your own for higher limits
+        or to run fully local — your key is stored only in this browser.
+      </p>
 
-      <div className="space-y-4">
-        {/* Provider Selection */}
-        <div>
-          <label className="block text-sm font-medium mb-2">AI Provider</label>
-          <select
-            value={config.provider}
-            onChange={(e) =>
-              setConfig({ ...config, provider: e.target.value as any })
-            }
-            className="w-full rounded-md border border-rule-dark bg-white px-4 py-2 focus:outline-none focus:ring-2 focus:ring-pine text-sm"
-          >
-            {Object.entries(LLM_PROVIDERS).map(([key, prov]) => (
-              <option key={key} value={key}>
-                {prov.name} — {prov.freeLimit}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-stone mt-1">{provider.description}</p>
+      <div className="rounded-sm border border-rule bg-paper p-6">
+        <h2 className="mb-5 border-b border-rule pb-2 text-xs font-bold uppercase tracking-[0.22em] text-crimson">
+          Engine
+        </h2>
+
+        <div className="mb-5 grid gap-2 sm:grid-cols-3">
+          {Object.values(LLM_PROVIDERS).map((p) => (
+            <button
+              key={p.id}
+              onClick={() => switchProvider(p.id)}
+              className={`rounded-md border px-3 py-2.5 text-left text-sm transition-colors ${
+                config.provider === p.id
+                  ? "border-ink bg-ink text-paper"
+                  : "border-rule-dark hover:border-ink"
+              }`}
+            >
+              <span className="block font-semibold">{p.name}</span>
+              <span className={`block text-xs ${config.provider === p.id ? "text-paper/70" : "text-stone"}`}>
+                {p.freeLimit}
+              </span>
+            </button>
+          ))}
         </div>
 
-        {/* Model Selection */}
-        <div>
-          <label className="block text-sm font-medium mb-2">Model</label>
+        <p className="mb-5 text-sm text-stone">{provider.description}</p>
+
+        <label className="mb-4 block">
+          <span className="mb-1.5 block text-sm font-medium">Model</span>
           <select
             value={config.model}
             onChange={(e) => setConfig({ ...config, model: e.target.value })}
-            className="w-full rounded-md border border-rule-dark bg-white px-4 py-2 focus:outline-none focus:ring-2 focus:ring-pine text-sm"
+            className={inputCls}
           >
             {provider.models.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
+              <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>
-        </div>
+        </label>
 
-        {/* API Key (if required) */}
         {provider.requiresApiKey && (
-          <div>
-            <label className="block text-sm font-medium mb-2">API Key</label>
+          <label className="mb-4 block">
+            <span className="mb-1.5 block text-sm font-medium">API key</span>
             <input
               type="password"
               value={config.apiKey}
-              onChange={(e) =>
-                setConfig({ ...config, apiKey: e.target.value })
-              }
-              placeholder={`Enter your ${provider.name} API key`}
-              className="w-full rounded-md border border-rule-dark bg-white px-4 py-2 focus:outline-none focus:ring-2 focus:ring-pine text-sm"
+              onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
+              placeholder={`Paste your ${provider.name} key`}
+              className={inputCls}
             />
-            {getDefaultApiKey(config.provider) === config.apiKey && config.apiKey && (
-              <p className="text-xs text-amber-700 mt-1">
-                ✓ Using default API key from environment
-              </p>
-            )}
-            {!config.apiKey && (
-              <p className="text-xs text-stone mt-1">
-                Get your free API key at{" "}
-                {config.provider === "groq" && "https://console.groq.com"}
-                {config.provider === "together" && "https://api.together.xyz"}
-                {config.provider === "huggingface" &&
-                  "https://huggingface.co/settings/tokens"}
-                {config.provider === "replicate" && "https://replicate.com/account"}
-              </p>
-            )}
-          </div>
+            <span className="mt-1.5 block text-xs text-stone">
+              Free key at{" "}
+              <a href={provider.keyUrl} target="_blank" rel="noreferrer" className="text-crimson underline">
+                {provider.keyUrl.replace("https://", "")}
+              </a>
+            </span>
+          </label>
         )}
 
-        {/* Base URL (if Ollama) */}
         {config.provider === "ollama" && (
-          <div>
-            <label className="block text-sm font-medium mb-2">Ollama URL</label>
+          <label className="mb-4 block">
+            <span className="mb-1.5 block text-sm font-medium">Ollama URL</span>
             <input
-              type="text"
               value={config.baseUrl || provider.baseUrl}
-              onChange={(e) =>
-                setConfig({ ...config, baseUrl: e.target.value })
-              }
+              onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
               placeholder="http://localhost:11434/v1"
-              className="w-full rounded-md border border-rule-dark bg-white px-4 py-2 focus:outline-none focus:ring-2 focus:ring-pine text-sm"
+              className={inputCls}
             />
-            <p className="text-xs text-stone mt-1">
-              Make sure Ollama is running locally: run `ollama serve` in your
-              terminal
-            </p>
-          </div>
+            <span className="mt-1.5 block text-xs text-stone">
+              Works when you run the site locally next to Ollama.
+            </span>
+          </label>
         )}
 
-        {/* Action Buttons */}
-        <div className="flex gap-2 pt-4">
+        <div className="mt-6 flex flex-wrap gap-3">
           <button
-            onClick={handleTest}
-            disabled={testing || !config.apiKey && provider.requiresApiKey}
-            className="flex-1 rounded-md border border-amber bg-white px-4 py-2 text-sm font-medium text-amber hover:bg-amber/5 transition-colors disabled:opacity-50"
+            onClick={save}
+            className="rounded-md bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-crimson"
           >
-            {testing ? "Testing…" : "Test Connection"}
+            Save engine
           </button>
           <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 rounded-md bg-pine px-4 py-2 text-sm font-semibold text-paper hover:bg-pine-deep transition-colors disabled:opacity-50"
+            onClick={test}
+            disabled={testing || (provider.requiresApiKey && !config.apiKey)}
+            className="rounded-md border border-ink px-5 py-2.5 text-sm font-semibold transition-colors hover:bg-ink hover:text-paper disabled:opacity-50"
           >
-            {saving ? "Saving…" : "Save Configuration"}
+            {testing ? "Testing…" : "Test connection"}
           </button>
-          <button
-            onClick={onClose}
-            className="flex-1 rounded-md border border-rule-dark px-4 py-2 text-sm font-medium text-stone hover:text-ink transition-colors"
-          >
+          <button onClick={onClose} className="px-4 py-2.5 text-sm text-stone hover:text-ink">
             Done
           </button>
         </div>
 
         {message && (
           <p
-            className={`mt-3 rounded-md px-4 py-3 text-sm ${
+            className={`mt-4 rounded-md border px-4 py-3 text-sm ${
               message.startsWith("✓")
-                ? "border border-pine bg-pine/10 text-pine"
-                : "border border-amber bg-amber/10 text-amber"
+                ? "border-rule bg-linen text-ink"
+                : "border-amber bg-amber/10 text-ink"
             }`}
           >
             {message}

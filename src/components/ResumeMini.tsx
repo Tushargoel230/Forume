@@ -69,7 +69,7 @@ export function ResumeMini({ variant, className = "" }: { variant: Variant; clas
                   ? "border-[#232629]"
                   : serif
                     ? "border-[#cfc4b8] text-[#7a2e2e] text-center"
-                    : "border-[#ddd] text-[#8a6d1f]"
+                    : "border-[#ddd] text-[#a31f31]"
               }`}
             >
               {s.title}
