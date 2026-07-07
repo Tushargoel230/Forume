@@ -108,13 +108,25 @@ export function getLLMConfig(): LLMConfig | null {
   }
 
   const stored = localStorage.getItem("forume-llm-config");
-  if (!stored) return null;
-
-  try {
-    return JSON.parse(stored) as LLMConfig;
-  } catch {
-    return null;
+  if (stored) {
+    try {
+      return JSON.parse(stored) as LLMConfig;
+    } catch {
+      return null;
+    }
   }
+
+  // If no stored config, try to use default API key from env
+  const defaultGroqKey = process.env.NEXT_PUBLIC_GROQ_API_KEY;
+  if (defaultGroqKey) {
+    return {
+      provider: "groq",
+      apiKey: defaultGroqKey,
+      model: "mixtral-8x7b-32768",
+    };
+  }
+
+  return null;
 }
 
 export function setLLMConfig(config: LLMConfig): void {
@@ -125,4 +137,18 @@ export function setLLMConfig(config: LLMConfig): void {
 export function clearLLMConfig(): void {
   if (typeof window === "undefined") return;
   localStorage.removeItem("forume-llm-config");
+}
+
+export function getDefaultApiKey(provider: ProviderType): string {
+  if (typeof window === "undefined") return "";
+  
+  const envKeyMap: Record<ProviderType, string> = {
+    groq: process.env.NEXT_PUBLIC_GROQ_API_KEY ?? "",
+    together: process.env.NEXT_PUBLIC_TOGETHER_API_KEY ?? "",
+    huggingface: process.env.NEXT_PUBLIC_HUGGINGFACE_API_KEY ?? "",
+    ollama: "", // No key needed
+    replicate: process.env.NEXT_PUBLIC_REPLICATE_API_KEY ?? "",
+  };
+  
+  return envKeyMap[provider];
 }

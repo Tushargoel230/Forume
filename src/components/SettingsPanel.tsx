@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { LLM_PROVIDERS, type LLMConfig, getLLMConfig, setLLMConfig } from "@/lib/llm-providers";
+import { LLM_PROVIDERS, type LLMConfig, getLLMConfig, setLLMConfig, getDefaultApiKey } from "@/lib/llm-providers";
 
 export function SettingsPanel({ onClose }: { onClose: () => void }) {
   const [config, setConfig] = useState<LLMConfig>(() => {
@@ -124,14 +124,21 @@ export function SettingsPanel({ onClose }: { onClose: () => void }) {
               placeholder={`Enter your ${provider.name} API key`}
               className="w-full rounded-md border border-rule-dark bg-white px-4 py-2 focus:outline-none focus:ring-2 focus:ring-pine text-sm"
             />
-            <p className="text-xs text-stone mt-1">
-              Get your free API key at{" "}
-              {config.provider === "groq" && "https://console.groq.com"}
-              {config.provider === "together" && "https://api.together.xyz"}
-              {config.provider === "huggingface" &&
-                "https://huggingface.co/settings/tokens"}
-              {config.provider === "replicate" && "https://replicate.com/account"}
-            </p>
+            {getDefaultApiKey(config.provider) === config.apiKey && config.apiKey && (
+              <p className="text-xs text-amber-700 mt-1">
+                ✓ Using default API key from environment
+              </p>
+            )}
+            {!config.apiKey && (
+              <p className="text-xs text-stone mt-1">
+                Get your free API key at{" "}
+                {config.provider === "groq" && "https://console.groq.com"}
+                {config.provider === "together" && "https://api.together.xyz"}
+                {config.provider === "huggingface" &&
+                  "https://huggingface.co/settings/tokens"}
+                {config.provider === "replicate" && "https://replicate.com/account"}
+              </p>
+            )}
           </div>
         )}
 
