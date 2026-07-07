@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAsUser } from "@/lib/supabase";
 import { atsCheck } from "@/lib/ats";
 import { DEMO_COVER, DEMO_KEYWORDS, DEMO_RESUME } from "@/lib/demo";
+import { getLLMConfig } from "@/lib/llm-providers";
 import * as prompts from "@/lib/prompts";
 import type { Contact, Resume } from "@/lib/types";
 
@@ -11,11 +12,21 @@ const CONTEXT_BUDGET = 24000;
 
 type LlmConfig = { baseUrl: string; apiKey: string; model: string };
 
-function llmConfig(): LlmConfig | null {
+function llmConfigFromEnv(): LlmConfig | null {
   const baseUrl = process.env.LLM_BASE_URL;
   const model = process.env.LLM_MODEL;
   if (!baseUrl || !model) return null;
   return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey: process.env.LLM_API_KEY ?? "", model };
+}
+
+function llmConfigFromHeader(header: string): LlmConfig | null {
+  try {
+    const config = JSON.parse(header);
+    if (!config.baseUrl || !config.model) return null;
+    return { baseUrl: config.baseUrl.replace(/\/$/, ""), apiKey: config.apiKey ?? "", model: config.model };
+  } catch {
+    return null;
+  }
 }
 
 async function chat(cfg: LlmConfig, system: string, user: string, jsonMode: boolean): Promise<string> {
@@ -52,14 +63,26 @@ function extractJson<T>(text: string): T {
 export async function POST(request: Request) {
   const auth = request.headers.get("authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "");
-  if (!token) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  const demoEmail = request.headers.get("x-demo-email")?.trim() ?? "";
+  const demoMode = Boolean(demoEmail) || token.startsWith("demo-");
 
-  const supabase = supabaseAsUser(token);
-  const { data: userData, error: userErr } = await supabase.auth.getUser(token);
-  if (userErr || !userData.user) {
-    return NextResponse.json({ error: "Session expired — sign in again." }, { status: 401 });
+  if (!demoMode && !token) {
+    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
   }
-  const user = userData.user;
+
+  let user: { id: string; email?: string | null } | null = null;
+  let supabase: ReturnType<typeof supabaseAsUser> | null = null;
+
+  if (demoMode) {
+    user = { id: `demo-${encodeURIComponent(demoEmail || "demo@forume.app")}`, email: demoEmail || "demo@forume.app" };
+  } else {
+    supabase = supabaseAsUser(token);
+    const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+    if (userErr || !userData.user) {
+      return NextResponse.json({ error: "Session expired — sign in again." }, { status: 401 });
+    }
+    user = userData.user;
+  }
 
   const body = await request.json();
   const jd: string = (body.jd ?? "").trim();
@@ -68,35 +91,40 @@ export async function POST(request: Request) {
   const template: string = body.template ?? "slate";
   if (!jd) return NextResponse.json({ error: "Paste a job description first." }, { status: 422 });
 
-  const [{ data: docs }, { data: profile }] = await Promise.all([
-    supabase.from("documents").select("name, content").order("id"),
-    supabase.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
-  ]);
-  const contact: Contact = {
-    name: profile?.name ?? "",
-    email: user.email ?? "",
-    phone: profile?.phone ?? "",
-    location: profile?.location ?? "",
-    linkedin: profile?.linkedin ?? "",
-    website: profile?.website ?? "",
-  };
-  const context = (docs ?? [])
-    .map((d) => `### ${d.name}\n${d.content}`)
-    .join("\n\n")
-    .slice(0, CONTEXT_BUDGET);
+  const contact: Contact = demoMode
+    ? { name: "", email: user.email ?? "", phone: "", location: "", linkedin: "", website: "" }
+    : { name: "", email: user.email ?? "", phone: "", location: "", linkedin: "", website: "" };
 
-  const cfg = llmConfig();
+  const cfg = llmConfigFromHeader(request.headers.get("x-llm-config") || "") || llmConfigFromEnv();
   let resume: Resume;
   let cover: string;
   let keywords: string[];
   let isDemo = false;
 
-  if (!cfg) {
+  if (demoMode) {
+    resume = DEMO_RESUME;
+    cover = DEMO_COVER;
+    keywords = DEMO_KEYWORDS;
+    isDemo = true;
+  } else if (!cfg) {
     resume = DEMO_RESUME;
     cover = DEMO_COVER;
     keywords = DEMO_KEYWORDS;
     isDemo = true;
   } else {
+    const [{ data: docs }, { data: profile }] = await Promise.all([
+      supabase!.from("documents").select("name, content").order("id"),
+      supabase!.from("profiles").select("*").eq("user_id", user.id).maybeSingle(),
+    ]);
+    contact.name = profile?.name ?? "";
+    contact.phone = profile?.phone ?? "";
+    contact.location = profile?.location ?? "";
+    contact.linkedin = profile?.linkedin ?? "";
+    contact.website = profile?.website ?? "";
+    const context = (docs ?? [])
+      .map((d) => `### ${d.name}\n${d.content}`)
+      .join("\n\n")
+      .slice(0, CONTEXT_BUDGET);
     if (!context) {
       return NextResponse.json(
         { error: "Your profile is empty — add a resume or notes in Profile first." },
@@ -136,7 +164,17 @@ export async function POST(request: Request) {
   }
 
   const ats = atsCheck(resume, contact, keywords);
-  const { data: inserted, error: insertErr } = await supabase
+
+  if (demoMode) {
+    return NextResponse.json({
+      id: `demo-${Date.now()}`,
+      resume, cover_letter: cover, ats,
+      is_demo: true,
+      created_at: new Date().toISOString(),
+    });
+  }
+
+  const { data: inserted, error: insertErr } = await supabase!
     .from("applications")
     .insert({
       user_id: user.id,
