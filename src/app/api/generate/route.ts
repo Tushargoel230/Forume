@@ -1,104 +1,16 @@
-import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { supabaseAsUser } from "@/lib/supabase";
 import { atsCheck } from "@/lib/ats";
 import { DEMO_COVER, DEMO_KEYWORDS, DEMO_RESUME } from "@/lib/demo";
+import {
+  CONTEXT_BUDGET, chat, extractJson, fallbackConfig, friendlyLlmError, llmConfigFromEnv,
+  type LlmConfig,
+} from "@/lib/llm";
+import { clientIpHash, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
 import * as prompts from "@/lib/prompts";
 import type { Contact, Resume } from "@/lib/types";
 
 export const maxDuration = 300;
-
-// keep three sequential calls inside Groq's free-tier 12k tokens/minute
-const CONTEXT_BUDGET = 11000;
-
-type LlmConfig = { baseUrl: string; apiKey: string; model: string };
-
-function llmConfigFromEnv(): LlmConfig | null {
-  const baseUrl = process.env.LLM_BASE_URL;
-  const model = process.env.LLM_MODEL;
-  if (!baseUrl || !model) return null;
-  return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey: process.env.LLM_API_KEY ?? "", model };
-}
-
-async function chat(cfg: LlmConfig, system: string, user: string, jsonMode: boolean): Promise<string> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: cfg.model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
-        temperature: jsonMode ? 0.4 : 0.7,
-      }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return data.choices[0].message.content as string;
-    }
-    const text = (await res.text()).slice(0, 300);
-    // per-minute rate limits clear quickly: honor Retry-After (capped) and retry twice
-    if (res.status === 429 && attempt < 2) {
-      const retryAfter = Number(res.headers.get("retry-after")) || 8;
-      await new Promise((r) => setTimeout(r, Math.min(retryAfter, 20) * 1000));
-      continue;
-    }
-    throw new Error(`LLM returned ${res.status}: ${text}`);
-  }
-}
-
-function extractJson<T>(text: string): T {
-  let t = text.trim();
-  if (t.startsWith("```")) t = t.split("```")[1].replace(/^json/, "");
-  const start = t.indexOf("{");
-  const end = t.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("No JSON object in model output");
-  return JSON.parse(t.slice(start, end + 1)) as T;
-}
-
-const DEMO_DAILY_LIMIT = 3;
-const USER_DAILY_LIMIT = 25;
-
-/** Atomic daily counter via the increment_usage() Postgres function.
-    Fails open: if the limiter itself is unavailable, generation proceeds. */
-async function withinDailyLimit(identifier: string, limit: number): Promise<boolean> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return true;
-  try {
-    const admin = createClient(url, key);
-    const { data, error } = await admin.rpc("increment_usage", {
-      p_identifier: identifier,
-      p_limit: limit,
-    });
-    if (error) return true;
-    return Boolean(data);
-  } catch {
-    return true;
-  }
-}
-
-function clientIpHash(request: Request): string {
-  const ip = (request.headers.get("x-forwarded-for") ?? "unknown").split(",")[0].trim();
-  return createHash("sha256").update(ip).digest("hex").slice(0, 32);
-}
-
-function fallbackConfig(primary: LlmConfig): LlmConfig | null {
-  const model = process.env.LLM_FALLBACK_MODEL;
-  if (!model || model === primary.model) return null;
-  return {
-    baseUrl: (process.env.LLM_FALLBACK_BASE_URL ?? primary.baseUrl).replace(/\/$/, ""),
-    apiKey: process.env.LLM_FALLBACK_API_KEY ?? primary.apiKey,
-    model,
-  };
-}
 
 async function runWithFallback(
   cfg: LlmConfig, context: string, contact: Contact,
@@ -111,17 +23,6 @@ async function runWithFallback(
     if (!fb) throw e;
     return await runPipeline(fb, context, contact, company, role, jd);
   }
-}
-
-function friendlyLlmError(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
-  if (msg.includes(" 429")) {
-    return "The writing engine is at capacity right now — try again in a minute.";
-  }
-  if (msg.includes(" 401") || msg.includes(" 403")) {
-    return "The writing engine rejected the request — please try again later.";
-  }
-  return `Generation failed: ${msg}`;
 }
 
 async function runPipeline(

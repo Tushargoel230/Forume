@@ -6,14 +6,35 @@ import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { supabaseBrowser } from "@/lib/supabase";
 import { Logo } from "@/components/Logo";
+import { ResumeEditor } from "@/components/ResumeEditor";
 import { ResumeSheet, TEMPLATES } from "@/components/ResumeSheet";
+import { atsCheck } from "@/lib/ats";
 import { extractText } from "@/lib/extract-text";
 import { maybeImportDemoData } from "@/lib/import-demo";
 import type { Application, AtsReport, Contact, Resume } from "@/lib/types";
 
+const DEMO_APPS_KEY = "forume-demo-applications";
+
+function readDemoApps(): Application[] {
+  try {
+    return JSON.parse(window.localStorage.getItem(DEMO_APPS_KEY) ?? "[]");
+  } catch {
+    return [];
+  }
+}
+
+/** Insert or replace by id, newest first, capped so localStorage stays small. */
+function writeDemoApp(app: Application) {
+  const list = readDemoApps();
+  const i = list.findIndex((a) => a.id === app.id);
+  if (i >= 0) list[i] = app;
+  else list.unshift(app);
+  window.localStorage.setItem(DEMO_APPS_KEY, JSON.stringify(list.slice(0, 40)));
+}
+
 type Doc = { id: number; name: string; content: string; created_at: string };
 type Tab = "new" | "profile" | "history";
-type ResultTab = "resume" | "cover" | "ats";
+type ResultTab = "resume" | "cover" | "ats" | "edit";
 type DemoSession = { access_token: string; user: { id: string; email: string } };
 
 const EMPTY_CONTACT: Contact = {
@@ -202,11 +223,13 @@ export function setOpenedApplication(a: Application) {
 }
 
 function NewApplication({ session }: { session: Session | DemoSession }) {
-  const [jd, setJd] = useState("");
-  const [company, setCompany] = useState("");
-  const [role, setRole] = useState("");
-  const [template, setTemplate] = useState("slate");
+  // when opened from the archive, restore the whole application — JD included
+  const [jd, setJd] = useState(openedApplication?.jd ?? "");
+  const [company, setCompany] = useState(openedApplication?.company ?? "");
+  const [role, setRole] = useState(openedApplication?.role ?? "");
+  const [template, setTemplate] = useState(openedApplication?.template ?? "slate");
   const [busy, setBusy] = useState(false);
+  const [fixing, setFixing] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Application | null>(openedApplication);
   const [contact, setContact] = useState<Contact>(EMPTY_CONTACT);
@@ -277,18 +300,87 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
-      setResult({
+      const app: Application = {
         id: data.id, company, role, jd,
         resume: data.resume, cover_letter: data.cover_letter,
         ats: data.ats, template, is_demo: data.is_demo,
         created_at: data.created_at,
-      });
+      };
+      setResult(app);
       setResultTab("resume");
+      // signed-in rows are saved server-side; the demo archive lives here
+      if (isDemo) writeDemoApp(app);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Merge a change into the shown result and persist it to the archive. */
+  async function updateResult(patch: Partial<Application>) {
+    if (!result) return;
+    const updated = { ...result, ...patch };
+    setResult(updated);
+    if (session.access_token.startsWith("demo-")) {
+      writeDemoApp(updated);
+    } else if (typeof updated.id === "number") {
+      await supabase
+        .from("applications")
+        .update({
+          resume: updated.resume, cover_letter: updated.cover_letter,
+          ats: updated.ats, template: updated.template,
+        })
+        .eq("id", updated.id);
+    }
+  }
+
+  /** One targeted engine pass that weaves the flagged keywords in — truthfully. */
+  async function fixAts() {
+    if (!result?.resume || !result.ats) return;
+    setFixing(true);
+    setError("");
+    try {
+      const isDemo = session.access_token.startsWith("demo-");
+      let documents: { name: string; content: string }[] = [];
+      if (isDemo) {
+        try {
+          documents = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]");
+        } catch { documents = []; }
+      }
+      const res = await fetch("/api/fix", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+          ...(isDemo ? { "X-Demo-Email": session.user.email ?? "" } : {}),
+        },
+        body: JSON.stringify({
+          jd: result.jd, resume: result.resume, ats: result.ats, contact,
+          ...(isDemo ? { documents } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      await updateResult({ resume: data.resume, ats: data.ats });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFixing(false);
+    }
+  }
+
+  function saveEdit(resume: Resume, cover: string) {
+    if (!result) return;
+    const keywords = [
+      ...(result.ats?.keywords_found ?? []),
+      ...(result.ats?.keywords_missing ?? []),
+    ];
+    void updateResult({
+      resume, cover_letter: cover,
+      ats: atsCheck(resume, contact, keywords),
+    });
+    setResultTab("resume");
   }
 
   return (
@@ -309,13 +401,6 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
           <textarea value={jd} onChange={(e) => setJd(e.target.value)} rows={12}
             placeholder="Paste the full job description here…" className={inputCls} />
         </Field>
-        <Field label="Template">
-          <select value={template} onChange={(e) => setTemplate(e.target.value)} className={inputCls}>
-            {TEMPLATES.map((t) => (
-              <option key={t.id} value={t.id}>{t.name} — {t.blurb}</option>
-            ))}
-          </select>
-        </Field>
         <button
           onClick={generate}
           disabled={busy}
@@ -329,7 +414,11 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
       </div>
 
       {result ? (
-        <ResultPanel result={result} contact={contact} resultTab={resultTab} setResultTab={setResultTab} />
+        <ResultPanel
+          result={result} contact={contact} resultTab={resultTab} setResultTab={setResultTab}
+          onTemplateChange={(t) => { setTemplate(t); void updateResult({ template: t }); }}
+          onFix={fixAts} fixing={fixing} onSaveEdit={saveEdit}
+        />
       ) : (
         <div className="cropmarks bg-paper px-8 py-20 text-center text-stone shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)]">
           {busy ? (
@@ -356,45 +445,62 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
 }
 
 function ResultPanel({
-  result, contact, resultTab, setResultTab,
+  result, contact, resultTab, setResultTab, onTemplateChange, onFix, fixing, onSaveEdit,
 }: {
   result: Application;
   contact: Contact;
   resultTab: ResultTab;
   setResultTab: (t: ResultTab) => void;
+  onTemplateChange: (t: string) => void;
+  onFix: () => void;
+  fixing: boolean;
+  onSaveEdit: (resume: Resume, cover: string) => void;
 }) {
   return (
     <div className="cropmarks border border-rule bg-paper shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)]">
       {result.is_demo && (
         <p className="border-b border-amber bg-amber/10 px-5 py-3 text-sm">
-          <b>Sample output.</b> Upload your resume under <b>Profile</b> and
+          <b>Sample output.</b> Upload your resume under <b>Your sources</b> and
           generate again — Forume will write from your real experience.
         </p>
       )}
-      <div className="flex border-b border-rule">
+      <div className="flex flex-wrap items-center border-b border-rule">
         {(
           [
             ["resume", "Resume"],
             ["cover", "Cover letter"],
             ["ats", "ATS check"],
+            ["edit", "Edit"],
           ] as [ResultTab, string][]
         ).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setResultTab(id)}
-            className={`px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors sm:px-5 ${
               resultTab === id ? "border-crimson text-ink" : "border-transparent text-stone hover:text-ink"
             }`}
           >
             {label}
           </button>
         ))}
-        <button
-          onClick={() => window.print()}
-          className="ml-auto m-2 rounded-md border border-ink px-4 py-1.5 text-sm font-semibold hover:bg-ink hover:text-paper transition-colors print:hidden"
-        >
-          Save as PDF
-        </button>
+        <div className="ml-auto flex items-center gap-2 p-2 print:hidden">
+          <select
+            value={result.template}
+            onChange={(e) => onTemplateChange(e.target.value)}
+            title="Switch the typeset style — reprints instantly"
+            className="rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
+          >
+            {TEMPLATES.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          <button
+            onClick={() => window.print()}
+            className="rounded-md border border-ink px-4 py-1.5 text-sm font-semibold hover:bg-ink hover:text-paper transition-colors"
+          >
+            Save as PDF
+          </button>
+        </div>
       </div>
       <div className="p-5">
         {resultTab === "resume" && result.resume && (
@@ -405,14 +511,32 @@ function ResultPanel({
             {result.cover_letter}
           </div>
         )}
-        {resultTab === "ats" && result.ats && <AtsPanel ats={result.ats} />}
+        {resultTab === "ats" && result.ats && (
+          <AtsPanel ats={result.ats} onFix={onFix} fixing={fixing} canFix={!result.is_demo} />
+        )}
+        {resultTab === "edit" && result.resume && (
+          <ResumeEditor
+            resume={result.resume}
+            coverLetter={result.cover_letter ?? ""}
+            onSave={onSaveEdit}
+            onCancel={() => setResultTab("resume")}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function AtsPanel({ ats }: { ats: AtsReport }) {
+function AtsPanel({
+  ats, onFix, fixing, canFix,
+}: {
+  ats: AtsReport;
+  onFix: () => void;
+  fixing: boolean;
+  canFix: boolean;
+}) {
   const verdict = ats.score >= 80 ? "Passes screening" : ats.score >= 60 ? "Needs work" : "Will not parse";
+  const hasProblems = ats.keywords_missing.length > 0 || ats.checks.some((c) => !c.passed);
   // semicircle arc length ≈ 151 for r=48 — reveal the scored share of it
   const ARC = 151;
   return (
@@ -438,6 +562,21 @@ function AtsPanel({ ats }: { ats: AtsReport }) {
         <p className="mt-5 border-t border-rule pt-4 text-xs leading-relaxed text-stone">
           {ats.coverage}% of the job&apos;s key terms appear in your resume.
         </p>
+        {canFix && hasProblems && (
+          <>
+            <button
+              onClick={onFix}
+              disabled={fixing}
+              className="mt-4 w-full rounded-md bg-ink px-4 py-2.5 text-sm font-semibold text-paper transition-colors hover:bg-crimson disabled:opacity-50"
+            >
+              {fixing ? "Reworking the proof…" : "Fix these automatically"}
+            </button>
+            <p className="mt-2 text-[11px] leading-relaxed text-stone">
+              One engine pass weaves the missing terms in — only where your
+              sources support them. Nothing gets invented.
+            </p>
+          </>
+        )}
       </div>
 
       <div className="min-w-0">
@@ -761,10 +900,15 @@ function History({ onOpen }: { onOpen: () => void }) {
             <li key={a.id} className="py-3.5 flex items-center gap-4">
               <button
                 onClick={() => { setOpenedApplication(a); onOpen(); }}
-                className="flex-1 text-left font-medium text-sm hover:text-crimson"
+                className="min-w-0 flex-1 text-left text-sm hover:text-crimson"
               >
-                {[a.role, a.company].filter(Boolean).join(" @ ") || "Untitled application"}
-                {a.is_demo && <span className="ml-2 text-xs text-amber">(sample)</span>}
+                <span className="block font-medium">
+                  {[a.role, a.company].filter(Boolean).join(" @ ") || "Untitled application"}
+                  {a.is_demo && <span className="ml-2 text-xs text-amber">(sample)</span>}
+                </span>
+                {a.jd && (
+                  <span className="mt-0.5 block truncate text-xs font-normal text-stone">{a.jd}</span>
+                )}
               </button>
               <span className="text-xs text-stone">
                 {new Date(a.created_at).toLocaleDateString()}

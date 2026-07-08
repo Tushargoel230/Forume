@@ -4,12 +4,12 @@ import type { Contact, Resume } from "@/lib/types";
    Keep ids in sync with TEMPLATES (used by the dashboard select). */
 
 export const TEMPLATES: { id: string; name: string; blurb: string }[] = [
-  { id: "slate", name: "Slate Banner", blurb: "Confident dark header" },
-  { id: "modern", name: "Minimal Modern", blurb: "Air, restraint, hierarchy" },
-  { id: "classic", name: "Classic", blurb: "Centered, timeless" },
-  { id: "accent", name: "Accent", blurb: "A crimson edge" },
-  { id: "executive", name: "Executive Serif", blurb: "Small caps, senior calm" },
-  { id: "compact", name: "Compact", blurb: "Dense — fits one page" },
+  { id: "slate", name: "Onyx", blurb: "Confident dark header" },
+  { id: "modern", name: "Air", blurb: "Minimal, restrained, modern" },
+  { id: "classic", name: "Century", blurb: "Centered and timeless" },
+  { id: "accent", name: "Scarlet", blurb: "A crimson edge" },
+  { id: "executive", name: "Regent", blurb: "Small caps, senior calm" },
+  { id: "compact", name: "Folio", blurb: "Dense — fits one page" },
 ];
 
 type Theme = {

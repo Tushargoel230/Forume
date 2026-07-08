@@ -297,9 +297,9 @@ export default function Landing() {
           <div className="mt-14 grid gap-10 md:grid-cols-3">
             {(
               [
-                ["slate", "Slate Banner", "Confident dark header."],
-                ["serif", "Executive Serif", "Centered small caps, senior calm."],
-                ["modern", "Minimal Modern", "Air, restraint, hierarchy."],
+                ["slate", "Onyx", "Confident dark header."],
+                ["serif", "Regent", "Centered small caps, senior calm."],
+                ["modern", "Air", "Restraint and hierarchy."],
               ] as const
             ).map(([variant, name, blurb], i) => (
               <Reveal key={name} delay={0.1 * i}>

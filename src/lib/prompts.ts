@@ -43,7 +43,7 @@ Tailoring strategy from prior analysis:
 ${analysis}
 </strategy>
 
-Write the tailored resume content. Mirror the job description's exact terminology where the candidate genuinely has that experience, lead with the most relevant experience, keep bullets tight: strong verb first, what they did, the outcome. Aim for one page.
+Write the tailored resume content. Work every keyword from the strategy's "top_keywords" that is genuinely true of the candidate into the resume using the job description's exact terms — in skills, the summary, or the most relevant bullet. Skip any keyword the background does not support; never fabricate. Lead with the most relevant experience, keep bullets tight: strong verb first, what they did, the outcome. Aim for one page.
 
 Respond with a JSON object with exactly these keys (empty array/string when the background has nothing for it):
 - "headline": short professional title line tailored to the target role
@@ -54,6 +54,41 @@ Respond with a JSON object with exactly these keys (empty array/string when the 
 - "education": array of {"degree", "school", "dates", "details"}
 - "certifications": array of strings
 Return only JSON.`;
+
+export const FIX_SYSTEM = `You are an elite resume editor. You revise an existing resume to fix specific flagged problems while preserving everything that already works. You never invent employers, titles, dates, technologies, or metrics — every fact must be supported by the candidate's real background. You keep the candidate's voice: concrete verbs, varied sentence openings, and absolutely no cliches — never "results-driven", "dynamic professional", "proven track record", "passionate about", or similar filler. Change only what the flagged problems require.`;
+
+export const fixUser = (ctx: string, jd: string, resume: string, problems: string) => `
+Candidate's real background:
+
+<background>
+${ctx}
+</background>
+
+Target job description:
+
+<job_description>
+${jd}
+</job_description>
+
+Current resume (JSON):
+
+<resume>
+${resume}
+</resume>
+
+An ATS review flagged these problems:
+
+<problems>
+${problems}
+</problems>
+
+Revise the resume JSON to fix the flagged problems:
+- For each MISSING KEYWORD: if the background genuinely supports it, work the exact term into the most relevant existing bullet, the skills section, or the summary. If the background does NOT support it, leave it out — never fabricate.
+- Shorten any flagged over-long bullets to under 200 characters without losing the outcome.
+- Add missing dates ONLY if they appear in the background.
+- Keep every fact that was already correct. Do not add new jobs, degrees, or numbers.
+
+Return the complete revised resume as JSON with the same schema and keys as the input (headline, summary, skills, experience, projects, education, certifications). Return only JSON.`;
 
 export const COVER_SYSTEM = `You are an exceptional cover letter writer. Your letters sound like a specific, thoughtful human — never a template. Open with substance (never "I am writing to apply for..."), connect the candidate's real work to the company's actual needs, close with quiet confidence. 250-350 words. No cliches, no bullet points. Every claim must come from the candidate's real background.`;
 
