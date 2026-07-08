@@ -2,24 +2,6 @@ import type { Metadata } from "next";
 import { Newsreader, Public_Sans } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
-import { Analytics } from "@vercel/analytics/next";
-
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="en">
-      <body>
-        {children}
-        
-        {/* 2. Add the component right here inside the body tags */}
-        <Analytics />
-      </body>
-    </html>
-  );
-}
 
 const newsreader = Newsreader({
   variable: "--font-newsreader",
