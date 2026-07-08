@@ -18,9 +18,10 @@ export function LegalShell({
           </Link>
         </nav>
       </header>
-      <article className="mx-auto max-w-3xl px-6 py-16">
-        <h1 className="font-display text-4xl mb-10">{title}</h1>
-        <div className="space-y-6 leading-relaxed text-stone [&_h2]:font-display [&_h2]:text-2xl [&_h2]:text-ink [&_h2]:mt-10 [&_b]:text-ink">
+      <article className="mx-auto max-w-3xl px-6 py-16 lg:py-20">
+        <p className="text-xs font-bold uppercase tracking-[0.28em] text-crimson">The fine print</p>
+        <h1 className="font-display mt-3 text-4xl leading-tight sm:text-5xl">{title}</h1>
+        <div className="mt-10 border-t border-rule pt-8 space-y-6 leading-relaxed text-stone [&_h2]:font-display [&_h2]:text-2xl [&_h2]:text-ink [&_h2]:mt-10 [&_b]:text-ink">
           {children}
         </div>
       </article>

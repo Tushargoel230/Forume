@@ -9,7 +9,8 @@ import type { Contact, Resume } from "@/lib/types";
 
 export const maxDuration = 300;
 
-const CONTEXT_BUDGET = 24000;
+// keep three sequential calls inside Groq's free-tier 12k tokens/minute
+const CONTEXT_BUDGET = 11000;
 
 type LlmConfig = { baseUrl: string; apiKey: string; model: string };
 
@@ -21,25 +22,36 @@ function llmConfigFromEnv(): LlmConfig | null {
 }
 
 async function chat(cfg: LlmConfig, system: string, user: string, jsonMode: boolean): Promise<string> {
-  const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-    },
-    body: JSON.stringify({
-      model: cfg.model,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
-      temperature: jsonMode ? 0.4 : 0.7,
-    }),
-  });
-  if (!res.ok) throw new Error(`LLM returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const data = await res.json();
-  return data.choices[0].message.content as string;
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
+        temperature: jsonMode ? 0.4 : 0.7,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return data.choices[0].message.content as string;
+    }
+    const text = (await res.text()).slice(0, 300);
+    // per-minute rate limits clear quickly: honor Retry-After (capped) and retry twice
+    if (res.status === 429 && attempt < 2) {
+      const retryAfter = Number(res.headers.get("retry-after")) || 8;
+      await new Promise((r) => setTimeout(r, Math.min(retryAfter, 20) * 1000));
+      continue;
+    }
+    throw new Error(`LLM returned ${res.status}: ${text}`);
+  }
 }
 
 function extractJson<T>(text: string): T {

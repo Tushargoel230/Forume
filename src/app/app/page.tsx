@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
@@ -67,60 +67,130 @@ export default function Dashboard() {
     return <main className="flex-1 grid place-items-center text-stone">Loading…</main>;
   }
 
+  const isDemo = session.access_token.startsWith("demo-");
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    clearDemoSession();
+    router.replace("/");
+  };
+
   return (
-    <main className="flex-1">
-      <header className="sticky top-0 z-20 bg-linen/90 backdrop-blur border-b border-rule">
-        <div className="mx-auto max-w-6xl px-6 h-16 flex items-center justify-between">
-          <Link href="/">
-            <Logo />
-          </Link>
-          <nav className="flex gap-1">
-            {(
-              [
-                ["new", "New application"],
-                ["profile", "Profile"],
-                ["history", "History"],
-              ] as [Tab, string][]
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                onClick={() => setTab(id)}
-                className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                  tab === id ? "bg-ink text-paper" : "text-stone hover:text-ink"
-                }`}
-              >
+    <main className="flex-1 lg:grid lg:grid-cols-[250px_1fr]">
+      {/* desktop sidebar — the job ticket */}
+      <aside className="hidden border-r border-rule bg-linen lg:sticky lg:top-0 lg:flex lg:h-screen lg:flex-col">
+        <div className="border-b border-rule px-6 py-5">
+          <Link href="/"><Logo /></Link>
+        </div>
+        <nav className="flex-1 space-y-1 px-3 py-6">
+          {NAV.map(({ id, label, hint }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`block w-full border-l-2 px-4 py-3 text-left transition-colors ${
+                tab === id
+                  ? "border-crimson bg-paper shadow-sm"
+                  : "border-transparent hover:border-rule-dark"
+              }`}
+            >
+              <span className={`block text-xs font-bold uppercase tracking-[0.18em] ${tab === id ? "text-ink" : "text-stone"}`}>
                 {label}
-              </button>
-            ))}
-          </nav>
-          {session.access_token.startsWith("demo-") ? (
-            <Link href="/signin" className="text-sm font-semibold text-crimson hover:underline">
-              Sign in to save your work
-            </Link>
+              </span>
+              <span className="mt-0.5 block text-xs text-stone">{hint}</span>
+            </button>
+          ))}
+        </nav>
+        <div className="border-t border-rule px-6 py-5">
+          {isDemo ? (
+            <>
+              <p className="text-xs leading-relaxed text-stone">
+                Demo — your work lives only in this browser.
+              </p>
+              <Link href="/signin" className="mt-2 block text-sm font-semibold text-crimson hover:underline">
+                Sign in to save it →
+              </Link>
+            </>
           ) : (
-            <span className="flex items-center gap-3">
-              <span className="hidden text-xs text-stone sm:inline">{session.user.email}</span>
-              <button
-                onClick={async () => {
-                  await supabase.auth.signOut();
-                  clearDemoSession();
-                  router.replace("/");
-                }}
-                className="text-sm text-stone hover:text-ink"
-              >
+            <>
+              <p className="truncate text-xs text-stone" title={session.user.email}>{session.user.email}</p>
+              <button onClick={signOut} className="mt-1.5 text-sm font-medium text-stone hover:text-ink">
                 Sign out
               </button>
-            </span>
+            </>
           )}
         </div>
+      </aside>
+
+      {/* mobile top bar */}
+      <header className="sticky top-0 z-20 border-b border-rule bg-linen/90 backdrop-blur lg:hidden">
+        <div className="flex h-14 items-center justify-between px-5">
+          <Link href="/"><Logo /></Link>
+          {isDemo ? (
+            <Link href="/signin" className="text-sm font-semibold text-crimson hover:underline">
+              Sign in
+            </Link>
+          ) : (
+            <button onClick={signOut} className="text-sm text-stone hover:text-ink">Sign out</button>
+          )}
+        </div>
+        <nav className="flex border-t border-rule">
+          {NAV.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={`flex-1 border-b-2 px-2 py-2.5 text-xs font-bold uppercase tracking-[0.14em] transition-colors ${
+                tab === id ? "border-crimson text-ink" : "border-transparent text-stone"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
       </header>
 
-      <div className="mx-auto max-w-6xl px-6 py-10">
-        {tab === "new" && <NewApplication session={session} />}
-        {tab === "profile" && <Profile session={session} />}
-        {tab === "history" && <History onOpen={() => setTab("new")} />}
-      </div>
+      <section className="min-w-0 bg-linen">
+        <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 lg:px-10 lg:py-12">
+          <PageHeader tab={tab} />
+          {tab === "new" && <NewApplication session={session} />}
+          {tab === "profile" && <Profile session={session} />}
+          {tab === "history" && <History onOpen={() => setTab("new")} />}
+        </div>
+      </section>
     </main>
+  );
+}
+
+const NAV: { id: Tab; label: string; hint: string }[] = [
+  { id: "new", label: "New application", hint: "Paste a job, pull a proof" },
+  { id: "profile", label: "Your sources", hint: "Resumes, notes, contact" },
+  { id: "history", label: "Archive", hint: "Everything you've generated" },
+];
+
+const HEADERS: Record<Tab, { kicker: string; title: string; note: string }> = {
+  new: {
+    kicker: "Composing room",
+    title: "Set the type.",
+    note: "Paste the job description — Forume writes from your sources, nothing else.",
+  },
+  profile: {
+    kicker: "Source material",
+    title: "What Forume knows.",
+    note: "Everything generated is drawn from the documents and details stored here.",
+  },
+  history: {
+    kicker: "The archive",
+    title: "Every proof you've pulled.",
+    note: "Reopen, reprint, or discard past applications.",
+  },
+};
+
+function PageHeader({ tab }: { tab: Tab }) {
+  const h = HEADERS[tab];
+  return (
+    <header className="mb-8 border-b border-rule pb-6 lg:mb-10">
+      <p className="text-xs font-bold uppercase tracking-[0.28em] text-crimson">{h.kicker}</p>
+      <h1 className="font-display mt-2 text-3xl leading-tight sm:text-4xl">{h.title}</h1>
+      <p className="mt-2 max-w-xl text-sm leading-relaxed text-stone">{h.note}</p>
+    </header>
   );
 }
 
@@ -132,16 +202,15 @@ export function setOpenedApplication(a: Application) {
 }
 
 function NewApplication({ session }: { session: Session | DemoSession }) {
-  const [jd, setJd] = useState(`Senior Product Designer — Northstar Labs is looking for a thoughtful design partner who can shape product strategy, turn research into clear flows, and help ship polished experiences across web and mobile. The ideal candidate brings strong systems thinking, sharp prototyping skills, and a calm collaborative style.`);
-  const [company, setCompany] = useState("Northstar Labs");
-  const [role, setRole] = useState("Senior Product Designer");
+  const [jd, setJd] = useState("");
+  const [company, setCompany] = useState("");
+  const [role, setRole] = useState("");
   const [template, setTemplate] = useState("slate");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Application | null>(openedApplication);
   const [contact, setContact] = useState<Contact>(EMPTY_CONTACT);
   const [resultTab, setResultTab] = useState<ResultTab>("resume");
-  const autoGeneratedRef = useRef(false);
   const supabase = supabaseBrowser();
 
   useEffect(() => {
@@ -178,13 +247,11 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
       });
   }, [supabase, session]);
 
-  useEffect(() => {
-    if (autoGeneratedRef.current || result) return;
-    autoGeneratedRef.current = true;
-    void generate();
-  }, [result]);
-
   async function generate() {
+    if (!jd.trim()) {
+      setError("Paste a job description first.");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -263,12 +330,24 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
       {result ? (
         <ResultPanel result={result} contact={contact} resultTab={resultTab} setResultTab={setResultTab} />
       ) : (
-        <div className="rounded-sm border border-dashed border-rule-dark p-12 text-center text-stone">
-          <p className="font-display text-2xl mb-2 text-ink">Proof area</p>
-          <p className="max-w-sm mx-auto text-sm leading-relaxed">
-            Your tailored resume and cover letter appear here — scored against
-            ATS checks, ready to edit and print.
-          </p>
+        <div className="cropmarks bg-paper px-8 py-20 text-center text-stone shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)]">
+          {busy ? (
+            <>
+              <span className="stamp animate-pulse text-xl text-crimson">Setting type…</span>
+              <p className="mx-auto mt-6 max-w-sm text-sm leading-relaxed">
+                Reading the job, matching it against your sources, and writing
+                the proof. This takes about half a minute.
+              </p>
+            </>
+          ) : (
+            <>
+              <span className="stamp text-xl text-rule-dark">Awaiting copy</span>
+              <p className="mx-auto mt-6 max-w-sm text-sm leading-relaxed">
+                Your tailored resume and cover letter appear on this sheet —
+                ATS-checked, ready to edit and print.
+              </p>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -284,7 +363,7 @@ function ResultPanel({
   setResultTab: (t: ResultTab) => void;
 }) {
   return (
-    <div className="rounded-sm border border-rule bg-paper">
+    <div className="cropmarks border border-rule bg-paper shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)]">
       {result.is_demo && (
         <p className="border-b border-amber bg-amber/10 px-5 py-3 text-sm">
           <b>Sample output.</b> Upload your resume under <b>Profile</b> and
@@ -487,11 +566,6 @@ function Profile({ session }: { session: Session | DemoSession }) {
 
   return (
     <div className="max-w-3xl">
-      <p className="text-stone mb-8 leading-relaxed">
-        Your knowledge base. Everything Forume writes is drawn from what&apos;s
-        stored here — and nothing else.
-      </p>
-
       <div className="rounded-sm border border-rule bg-paper p-6 mb-6">
         <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2 mb-5">
           Contact block

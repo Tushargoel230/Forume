@@ -60,10 +60,28 @@ export default function SignIn() {
     "w-full rounded-md border border-rule-dark bg-white px-4 py-3 focus:outline-none focus:ring-2 focus:ring-ink";
 
   return (
-    <main className="flex-1 grid place-items-center bg-linen px-6 py-20">
-      <div className="w-full max-w-md">
-        <Link href="/"><Logo /></Link>
-        <div className="mt-6 rounded-sm border border-rule bg-paper p-8 shadow-[0_18px_50px_-24px_rgba(31,33,36,0.35)]">
+    <main className="flex-1 lg:grid lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+      {/* brand panel */}
+      <aside className="hero-glow relative hidden flex-col justify-between overflow-hidden bg-coal p-12 text-bone lg:flex">
+        <Link href="/"><Logo light /></Link>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.28em] text-gold-soft">The proof room</p>
+          <h2 className="font-display mt-4 max-w-sm text-4xl leading-tight xl:text-5xl">
+            Your experience, <em className="text-gold-soft">made undeniable.</em>
+          </h2>
+          <p className="mt-6 max-w-sm leading-relaxed text-fog">
+            One account keeps your sources, proofs, and applications on every
+            device — written from what you&apos;ve done, and nothing else.
+          </p>
+        </div>
+        <span className="stamp w-fit text-sm text-crimson">Honest by design</span>
+      </aside>
+
+      {/* form panel */}
+      <div className="grid place-items-center bg-linen px-6 py-16 lg:py-20">
+        <div className="w-full max-w-md">
+          <Link href="/" className="inline-block lg:hidden"><Logo /></Link>
+          <div className="cropmarks mt-6 border border-rule bg-paper p-8 shadow-[0_18px_50px_-24px_rgba(31,33,36,0.35)] sm:p-10 lg:mt-0">
           {!configured ? (
             <>
               <h1 className="font-display text-3xl mb-2">Accounts are warming up.</h1>
@@ -114,7 +132,7 @@ export default function SignIn() {
                 </button>
               </form>
               <Link href="/app" className="mt-5 block text-center text-sm text-stone hover:text-ink">
-                Just exploring? Try the demo without an account →
+                Just exploring? Start without an account →
               </Link>
             </>
           ) : (
@@ -150,6 +168,7 @@ export default function SignIn() {
           {error && (
             <p className="mt-4 rounded-md border border-amber bg-amber/10 px-4 py-3 text-sm">{error}</p>
           )}
+          </div>
         </div>
       </div>
     </main>

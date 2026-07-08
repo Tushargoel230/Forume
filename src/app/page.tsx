@@ -85,7 +85,7 @@ export default function Landing() {
             href="/app"
             className="rounded-sm bg-crimson px-4 py-2 text-sm font-semibold text-paper transition-colors hover:bg-[#a31f31]"
           >
-            Try the demo
+            Let&apos;s start
           </Link>
         </nav>
       </header>
@@ -129,7 +129,7 @@ export default function Landing() {
                 href="/app"
                 className="rounded-sm bg-crimson px-7 py-3.5 font-semibold text-paper transition-colors hover:bg-[#a31f31]"
               >
-                Try the demo
+                Let&apos;s start
               </Link>
               <a
                 href="#story"
@@ -353,7 +353,7 @@ export default function Landing() {
               Ready when <em className="text-gold-soft">you are.</em>
             </h2>
             <p className="mx-auto mt-6 max-w-md text-fog">
-              Open the demo, paste a job you want, and watch your experience
+              Open the app, paste a job you want, and watch your experience
               take the right shape.
             </p>
             <Link
