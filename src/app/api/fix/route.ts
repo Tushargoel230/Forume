@@ -4,7 +4,7 @@ import { atsCheck } from "@/lib/ats";
 import {
   CONTEXT_BUDGET, chat, extractJson, fallbackConfig, friendlyLlmError, llmConfigFromEnv,
 } from "@/lib/llm";
-import { clientIpHash, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
+import { demoRateKey, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
 import * as prompts from "@/lib/prompts";
 import type { AtsReport, Contact, Resume } from "@/lib/types";
 
@@ -60,7 +60,7 @@ export async function POST(request: Request) {
         )
       : [];
     context = docs.map((d) => `### ${d.name}\n${d.content}`).join("\n\n").slice(0, CONTEXT_BUDGET);
-    if (!(await withinDailyLimit(`ip:${clientIpHash(request)}`, DEMO_DAILY_LIMIT))) {
+    if (!(await withinDailyLimit(demoRateKey(request), DEMO_DAILY_LIMIT))) {
       return NextResponse.json(
         { error: "Daily demo limit reached — sign in for a higher limit, or come back tomorrow." },
         { status: 429 },

@@ -6,7 +6,7 @@ import {
   CONTEXT_BUDGET, chat, extractJson, fallbackConfig, friendlyLlmError, llmConfigFromEnv,
   type LlmConfig,
 } from "@/lib/llm";
-import { clientIpHash, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
+import { demoRateKey, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
 import * as prompts from "@/lib/prompts";
 import type { Contact, Fit, FitLevel, Resume } from "@/lib/types";
 
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
     let isSample = true;
 
     if (cfg && context) {
-      if (!(await withinDailyLimit(`ip:${clientIpHash(request)}`, DEMO_DAILY_LIMIT))) {
+      if (!(await withinDailyLimit(demoRateKey(request), DEMO_DAILY_LIMIT))) {
         return NextResponse.json(
           { error: "Daily demo limit reached — sign in for a higher limit, or come back tomorrow." },
           { status: 429 },

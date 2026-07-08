@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 
-export const DEMO_DAILY_LIMIT = 3;
+export const DEMO_DAILY_LIMIT = 5;
 export const USER_DAILY_LIMIT = 25;
 
 /** Atomic daily counter via the increment_usage() Postgres function.
@@ -21,6 +21,15 @@ export async function withinDailyLimit(identifier: string, limit: number): Promi
   } catch {
     return true;
   }
+}
+
+/** Per-visitor demo key. Prefer a stable per-browser id (so students behind
+    one shared campus IP each get their own allowance); fall back to hashed IP
+    when the client sends none. */
+export function demoRateKey(request: Request): string {
+  const id = request.headers.get("x-demo-id")?.trim();
+  if (id && /^[a-z0-9]{8,64}$/i.test(id)) return `demo-id:${id}`;
+  return `ip:${clientIpHash(request)}`;
 }
 
 export function clientIpHash(request: Request): string {

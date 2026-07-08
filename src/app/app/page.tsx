@@ -53,6 +53,18 @@ function clearDemoSession() {
   window.localStorage.removeItem("forume-demo-user");
 }
 
+/** Stable per-browser id so demo limits are per-device, not per-IP
+    (many students share one campus IP). Created once, kept in localStorage. */
+function demoDeviceId(): string {
+  if (typeof window === "undefined") return "";
+  let id = window.localStorage.getItem("forume-demo-id");
+  if (!id) {
+    id = (crypto.randomUUID?.() ?? `${Date.now()}${Math.random()}`).replace(/-/g, "");
+    window.localStorage.setItem("forume-demo-id", id);
+  }
+  return id;
+}
+
 export default function Dashboard() {
   const router = useRouter();
   const supabase = supabaseBrowser();
@@ -291,7 +303,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
-          ...(isDemo ? { "X-Demo-Email": session.user.email ?? "" } : {}),
+          ...(isDemo ? { "X-Demo-Email": session.user.email ?? "", "X-Demo-Id": demoDeviceId() } : {}),
         },
         body: JSON.stringify({
           jd, company, role, template,
@@ -353,7 +365,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
-          ...(isDemo ? { "X-Demo-Email": session.user.email ?? "" } : {}),
+          ...(isDemo ? { "X-Demo-Email": session.user.email ?? "", "X-Demo-Id": demoDeviceId() } : {}),
         },
         body: JSON.stringify({
           jd: result.jd, resume: result.resume, ats: result.ats, contact,
