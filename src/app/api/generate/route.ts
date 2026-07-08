@@ -8,14 +8,14 @@ import {
 } from "@/lib/llm";
 import { clientIpHash, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
 import * as prompts from "@/lib/prompts";
-import type { Contact, Resume } from "@/lib/types";
+import type { Contact, Fit, FitLevel, Resume } from "@/lib/types";
 
 export const maxDuration = 300;
 
 async function runWithFallback(
   cfg: LlmConfig, context: string, contact: Contact,
   company: string, role: string, jd: string,
-): Promise<{ resume: Resume; cover: string; keywords: string[] }> {
+): Promise<{ resume: Resume; cover: string; keywords: string[]; fit?: Fit }> {
   try {
     return await runPipeline(cfg, context, contact, company, role, jd);
   } catch (e) {
@@ -25,16 +25,18 @@ async function runWithFallback(
   }
 }
 
+const FIT_LEVELS: FitLevel[] = ["strong", "good", "fair", "stretch", "weak"];
+
 async function runPipeline(
   cfg: LlmConfig, context: string, contact: Contact,
   company: string, role: string, jd: string,
-): Promise<{ resume: Resume; cover: string; keywords: string[] }> {
+): Promise<{ resume: Resume; cover: string; keywords: string[]; fit?: Fit }> {
   const co = company || "(not specified)";
   const ro = role || "(see JD)";
 
   const analysisRaw = await chat(cfg, prompts.ANALYSIS_SYSTEM,
     prompts.analysisUser(context, co, ro, jd), true);
-  const analysis = extractJson<{ top_keywords?: string[] }>(analysisRaw);
+  const analysis = extractJson<{ top_keywords?: string[]; fit?: string; fit_reasons?: string[] }>(analysisRaw);
   const analysisStr = JSON.stringify(analysis, null, 1);
 
   const resumeRaw = await chat(cfg, prompts.RESUME_SYSTEM,
@@ -47,7 +49,13 @@ async function runPipeline(
   ).trim();
 
   const keywords = (analysis.top_keywords ?? []).filter((k) => typeof k === "string");
-  return { resume, cover, keywords };
+  const fit: Fit | undefined = FIT_LEVELS.includes(analysis.fit as FitLevel)
+    ? {
+        level: analysis.fit as FitLevel,
+        reasons: (analysis.fit_reasons ?? []).filter((r) => typeof r === "string").slice(0, 4),
+      }
+    : undefined;
+  return { resume, cover, keywords, fit };
 }
 
 export async function POST(request: Request) {
@@ -93,6 +101,7 @@ export async function POST(request: Request) {
     let resume: Resume = DEMO_RESUME;
     let cover = DEMO_COVER;
     let keywords = DEMO_KEYWORDS;
+    let fit: Fit | undefined;
     let isSample = true;
 
     if (cfg && context) {
@@ -103,7 +112,7 @@ export async function POST(request: Request) {
         );
       }
       try {
-        ({ resume, cover, keywords } = await runWithFallback(cfg, context, contact, company, role, jd));
+        ({ resume, cover, keywords, fit } = await runWithFallback(cfg, context, contact, company, role, jd));
         isSample = false;
       } catch (e) {
         return NextResponse.json(
@@ -114,6 +123,7 @@ export async function POST(request: Request) {
     }
 
     const ats = atsCheck(resume, contact, keywords);
+    if (fit) ats.fit = fit;
     return NextResponse.json({
       id: `demo-${Date.now()}`,
       resume, cover_letter: cover, ats,
@@ -151,6 +161,7 @@ export async function POST(request: Request) {
   let resume: Resume;
   let cover: string;
   let keywords: string[];
+  let fit: Fit | undefined;
   let isSample = false;
 
   if (!cfg) {
@@ -172,7 +183,7 @@ export async function POST(request: Request) {
       );
     }
     try {
-      ({ resume, cover, keywords } = await runWithFallback(cfg, context, contact, company, role, jd));
+      ({ resume, cover, keywords, fit } = await runWithFallback(cfg, context, contact, company, role, jd));
     } catch (e) {
       return NextResponse.json(
         { error: friendlyLlmError(e) },
@@ -182,6 +193,7 @@ export async function POST(request: Request) {
   }
 
   const ats = atsCheck(resume, contact, keywords);
+  if (fit) ats.fit = fit;
   const { data: inserted, error: insertErr } = await supabase
     .from("applications")
     .insert({

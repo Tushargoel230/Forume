@@ -25,12 +25,18 @@ export type Resume = {
 };
 
 export type AtsCheck = { name: string; passed: boolean; detail: string };
+
+export type FitLevel = "strong" | "good" | "fair" | "stretch" | "weak";
+export type Fit = { level: FitLevel; reasons: string[] };
+
 export type AtsReport = {
   score: number;
   coverage: number;
   checks: AtsCheck[];
   keywords_found: string[];
   keywords_missing: string[];
+  /* honest interview-chance verdict from the analysis stage; absent on samples */
+  fit?: Fit;
 };
 
 export type Contact = {

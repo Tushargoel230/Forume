@@ -11,7 +11,7 @@ import { ResumeSheet, TEMPLATES } from "@/components/ResumeSheet";
 import { atsCheck } from "@/lib/ats";
 import { extractText } from "@/lib/extract-text";
 import { maybeImportDemoData } from "@/lib/import-demo";
-import type { Application, AtsReport, Contact, Resume } from "@/lib/types";
+import type { Application, AtsReport, Contact, Fit, FitLevel, Resume } from "@/lib/types";
 
 const DEMO_APPS_KEY = "forume-demo-applications";
 
@@ -34,7 +34,7 @@ function writeDemoApp(app: Application) {
 
 type Doc = { id: number; name: string; content: string; created_at: string };
 type Tab = "new" | "profile" | "history";
-type ResultTab = "resume" | "cover" | "ats" | "edit";
+type ResultTab = "resume" | "cover" | "ats" | "fit" | "edit";
 type DemoSession = { access_token: string; user: { id: string; email: string } };
 
 const EMPTY_CONTACT: Contact = {
@@ -376,10 +376,9 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
       ...(result.ats?.keywords_found ?? []),
       ...(result.ats?.keywords_missing ?? []),
     ];
-    void updateResult({
-      resume, cover_letter: cover,
-      ats: atsCheck(resume, contact, keywords),
-    });
+    const ats = atsCheck(resume, contact, keywords);
+    if (result.ats?.fit) ats.fit = result.ats.fit; // fit judges the person, not the draft
+    void updateResult({ resume, cover_letter: cover, ats });
     setResultTab("resume");
   }
 
@@ -420,24 +419,35 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
           onFix={fixAts} fixing={fixing} onSaveEdit={saveEdit}
         />
       ) : (
-        <div className="cropmarks bg-paper px-8 py-20 text-center text-stone shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)]">
-          {busy ? (
-            <>
-              <span className="stamp animate-pulse text-xl text-crimson">Setting type…</span>
-              <p className="mx-auto mt-6 max-w-sm text-sm leading-relaxed">
-                Reading the job, matching it against your sources, and writing
-                the proof. This takes about half a minute.
-              </p>
-            </>
-          ) : (
-            <>
-              <span className="stamp text-xl text-rule-dark">Awaiting copy</span>
-              <p className="mx-auto mt-6 max-w-sm text-sm leading-relaxed">
-                Your tailored resume and cover letter appear on this sheet —
-                ATS-checked, ready to edit and print.
-              </p>
-            </>
-          )}
+        <div className="cropmarks bg-paper px-8 py-12 text-center text-stone shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)] sm:px-14">
+          {/* ghost proof: the sheet your resume will be typeset on */}
+          <div className={`relative mx-auto max-w-md border border-rule bg-white px-9 pb-10 pt-9 text-left shadow-[0_10px_30px_-18px_rgba(31,33,36,0.35)] ${busy ? "animate-pulse" : ""}`}>
+            <div className="h-4 w-40 rounded-[2px] bg-ink/15" />
+            <div className="mt-2.5 h-2 w-56 rounded-[2px] bg-rule" />
+            <div className="mt-1.5 h-2 w-44 rounded-[2px] bg-rule" />
+            {[["w-20", 3], ["w-24", 4], ["w-16", 2]].map(([w, lines], s) => (
+              <div key={s} className="mt-7">
+                <div className={`h-2 ${w} rounded-[2px] bg-crimson/25`} />
+                <div className="mt-2 border-t border-rule pt-2.5 space-y-1.5">
+                  {Array.from({ length: lines as number }).map((_, i) => (
+                    <div key={i} className={`h-2 rounded-[2px] bg-rule ${i % 2 ? "w-4/5" : "w-full"}`} />
+                  ))}
+                </div>
+              </div>
+            ))}
+            <span
+              className={`stamp absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-white/85 text-xl ${
+                busy ? "text-crimson" : "text-rule-dark"
+              }`}
+            >
+              {busy ? "Setting type…" : "Awaiting copy"}
+            </span>
+          </div>
+          <p className="mx-auto mt-8 max-w-xs text-sm leading-relaxed">
+            {busy
+              ? "Reading the job, weighing it against your sources, pulling the proof — about half a minute."
+              : "Paste a job on the left. Your resume is typeset onto this sheet — scored, fit-checked, ready to send."}
+          </p>
         </div>
       )}
     </div>
@@ -470,6 +480,7 @@ function ResultPanel({
             ["resume", "Resume"],
             ["cover", "Cover letter"],
             ["ats", "ATS check"],
+            ["fit", "Fit"],
             ["edit", "Edit"],
           ] as [ResultTab, string][]
         ).map(([id, label]) => (
@@ -514,6 +525,7 @@ function ResultPanel({
         {resultTab === "ats" && result.ats && (
           <AtsPanel ats={result.ats} onFix={onFix} fixing={fixing} canFix={!result.is_demo} />
         )}
+        {resultTab === "fit" && <FitPanel fit={result.ats?.fit} isSample={result.is_demo} />}
         {resultTab === "edit" && result.resume && (
           <ResumeEditor
             resume={result.resume}
@@ -620,6 +632,78 @@ function AtsPanel({
             where they&apos;re true of you.
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/* ---------------- fit verdict ---------------- */
+
+const FIT_META: Record<FitLevel, { label: string; note: string; tone: "crimson" | "amber" | "stone"; bands: number }> = {
+  strong: { label: "Strong fit", note: "Clearly qualified — apply with confidence.", tone: "crimson", bands: 5 },
+  good: { label: "Good fit", note: "A solid match with minor gaps.", tone: "crimson", bands: 4 },
+  fair: { label: "Possible fit", note: "Plausible — but expect a competitive field.", tone: "amber", bands: 3 },
+  stretch: { label: "A stretch", note: "Real gaps. It will take a strong angle.", tone: "amber", bands: 2 },
+  weak: { label: "Not a fit yet", note: "Your background doesn't support this one today.", tone: "stone", bands: 1 },
+};
+
+const TONE_TEXT = { crimson: "text-crimson", amber: "text-amber", stone: "text-stone" } as const;
+const TONE_BAND = { crimson: "bg-crimson", amber: "bg-amber", stone: "bg-stone" } as const;
+
+function FitPanel({ fit, isSample }: { fit?: Fit; isSample: boolean }) {
+  if (!fit) {
+    return (
+      <div className="px-6 py-14 text-center text-stone">
+        <span className="stamp text-lg text-rule-dark">Unjudged</span>
+        <p className="mx-auto mt-5 max-w-sm text-sm leading-relaxed">
+          {isSample
+            ? "The fit verdict is written when Forume reads a job against your own documents — add your sources and generate again."
+            : "This application was generated before fit verdicts existed — generate again to get one."}
+        </p>
+      </div>
+    );
+  }
+
+  const m = FIT_META[fit.level];
+  return (
+    <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
+      <div className="cropmarks self-start bg-white p-8 text-center shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)]">
+        {/* five-band ledger: one band per verdict step, weakest to strongest */}
+        <div className="mx-auto flex max-w-[220px] items-end gap-1.5" aria-hidden="true">
+          {[1, 2, 3, 4, 5].map((band) => (
+            <span
+              key={band}
+              className={`flex-1 rounded-[1px] transition-colors ${
+                band <= m.bands ? TONE_BAND[m.tone] : "bg-rule"
+              }`}
+              style={{ height: `${10 + band * 7}px` }}
+            />
+          ))}
+        </div>
+        <p className={`font-display mt-6 text-3xl leading-tight ${TONE_TEXT[m.tone]}`}>{m.label}</p>
+        <p className="mt-1.5 text-[0.6rem] font-bold uppercase tracking-[0.3em] text-stone">
+          Interview outlook
+        </p>
+        <p className="mt-5 border-t border-rule pt-4 text-xs leading-relaxed text-stone">{m.note}</p>
+      </div>
+
+      <div className="min-w-0">
+        <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2">
+          The honest read
+        </h3>
+        <ul className="mt-4 space-y-4">
+          {fit.reasons.map((r) => (
+            <li key={r} className="flex items-start gap-3.5 text-sm leading-relaxed">
+              <span className={`mt-0.5 ${TONE_TEXT[m.tone]}`}>—</span>
+              {r}
+            </li>
+          ))}
+        </ul>
+        <p className="mt-7 border-t border-rule pt-4 text-xs leading-relaxed text-stone">
+          Judged from your source documents against this job description — the
+          resume wording doesn&apos;t change it. A &ldquo;stretch&rdquo; can
+          still be worth sending; the read tells you what to lead with.
+        </p>
       </div>
     </div>
   );

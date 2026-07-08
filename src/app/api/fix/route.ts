@@ -113,5 +113,6 @@ export async function POST(request: Request) {
 
   const keywords = [...ats.keywords_found, ...ats.keywords_missing];
   const newAts = atsCheck(fixed, contact, keywords);
+  if (ats.fit) newAts.fit = ats.fit; // fit judges the person, not the resume draft
   return NextResponse.json({ resume: fixed, ats: newAts, changed: true });
 }

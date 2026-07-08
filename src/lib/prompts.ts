@@ -19,6 +19,8 @@ Produce a concise strategy for tailoring their resume. Respond with a JSON objec
 - "gaps": array of 0-4 requirements the candidate does not clearly meet, each with an honest reframe using only their real transferable experience
 - "positioning": one short paragraph: the strongest angle for positioning this candidate for this exact role
 - "tone": 2-4 words describing the writing tone that fits this company/role
+- "fit": your honest verdict on this candidate's realistic chance of getting an interview for this exact job, exactly one of: "strong" (clearly qualified, should apply), "good" (solid match with minor gaps), "fair" (plausible but competitive), "stretch" (significant gaps, possible with a strong angle), "weak" (not a realistic match yet)
+- "fit_reasons": array of 2-4 short honest sentences behind the verdict — always name the strongest alignment AND the realest gap; be direct, not encouraging
 
 Use only facts present in the background. Return only JSON.`;
 
