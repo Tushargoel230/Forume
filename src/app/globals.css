@@ -125,6 +125,10 @@ body {
 }
 .drift { animation: drift 7s ease-in-out infinite; animation-delay: var(--drift-delay, 0s); }
 
+/* app ATS gauge: sweep in from empty to the inline target offset */
+.arc-score { animation: arc-in 1.4s cubic-bezier(0.22, 1, 0.36, 1); }
+@keyframes arc-in { from { stroke-dashoffset: 151; } }
+
 /* animated score arc */
 .arc-path {
   stroke-dasharray: 260;
@@ -138,6 +142,7 @@ body {
   .reveal, .rise { opacity: 1; transform: none; animation: none; transition: none; }
   .drift { animation: none; }
   .arc-path { stroke-dashoffset: 0; transition: none; }
+  .arc-score { animation: none; }
 }
 
 /* ---------- print: only the printable sheet ---------- */

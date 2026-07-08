@@ -63,7 +63,7 @@ function extractJson<T>(text: string): T {
   return JSON.parse(t.slice(start, end + 1)) as T;
 }
 
-const DEMO_DAILY_LIMIT = 5;
+const DEMO_DAILY_LIMIT = 3;
 const USER_DAILY_LIMIT = 25;
 
 /** Atomic daily counter via the increment_usage() Postgres function.

@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { AuthCatch } from "@/components/AuthCatch";
 import { Logo } from "@/components/Logo";
 import { ResumeMini } from "@/components/ResumeMini";
 import { Reveal } from "@/components/Reveal";
@@ -51,19 +52,37 @@ const tiers = [
   {
     name: "Starter",
     price: "Free",
-    note: "One tailored application. See the difference.",
+    note: "For trying Forume — and for light seasons.",
+    features: [
+      "3 tailored applications a day",
+      "All six typeset templates",
+      "Full ATS report with every proof",
+      "Print-ready PDF export",
+    ],
     featured: false,
   },
   {
     name: "Pro",
     price: "€14",
-    note: "Unlimited applications, all templates, auto-fix.",
+    note: "For an active search. Everything in Starter, plus:",
+    features: [
+      "25 applications a day, priority engine",
+      "A tailored cover letter with every resume",
+      "Profile and history synced across devices",
+      "First access to new templates and tools",
+    ],
     featured: true,
   },
   {
     name: "Concierge",
     price: "€199",
-    note: "Human review and interview preparation, one-time.",
+    note: "One-time, human. When the role really matters:",
+    features: [
+      "Line-by-line review of your master resume",
+      "A 1:1 interview preparation session",
+      "LinkedIn profile rewrite",
+      "Two weeks of application support",
+    ],
     featured: false,
   },
 ];
@@ -71,6 +90,7 @@ const tiers = [
 export default function Landing() {
   return (
     <main className="flex-1 bg-linen text-ink">
+      <AuthCatch />
       {/* nav */}
       <header className="sticky top-0 z-40 border-b border-rule bg-linen/90 backdrop-blur">
         <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
@@ -270,8 +290,8 @@ export default function Landing() {
               Typeset, <em className="text-crimson">not templated.</em>
             </h2>
             <p className="mt-5 max-w-xl text-stone">
-              Every layout is single-column, real text — beautiful to a
-              recruiter, legible to a machine.
+              Six layouts, all free right now — single-column, real text,
+              beautiful to a recruiter, legible to a machine. Three of them:
             </p>
           </Reveal>
           <div className="mt-14 grid gap-10 md:grid-cols-3">
@@ -321,9 +341,17 @@ export default function Landing() {
                     {t.price}
                     {t.name === "Pro" && <span className={`text-lg ${t.featured ? "text-paper/60" : "text-stone"}`}>/mo</span>}
                   </p>
-                  <p className={`mb-8 mt-4 flex-1 text-sm leading-relaxed ${t.featured ? "text-paper/70" : "text-stone"}`}>
+                  <p className={`mt-4 text-sm leading-relaxed ${t.featured ? "text-paper/70" : "text-stone"}`}>
                     {t.note}
                   </p>
+                  <ul className={`mb-8 mt-5 flex-1 space-y-2.5 border-t pt-5 text-sm ${t.featured ? "border-paper/15" : "border-rule"}`}>
+                    {t.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5">
+                        <span className={`mt-0.5 text-xs font-bold ${t.featured ? "text-gold-soft" : "text-crimson"}`}>✓</span>
+                        <span className={t.featured ? "text-paper/85" : ""}>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
                   <Link
                     href="/app"
                     className={`rounded-sm px-5 py-3 text-center text-sm font-semibold transition-colors ${
@@ -339,8 +367,8 @@ export default function Landing() {
             ))}
           </div>
           <p className="mt-6 text-xs text-stone/70">
-            Early access: everything is free while we build. Listed prices show
-            where Forume is headed.
+            Early access: everything above is free while we grow — no card, no
+            catch. Listed prices show where Forume is headed.
           </p>
         </div>
       </section>

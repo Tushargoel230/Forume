@@ -6,7 +6,7 @@ import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
 import { supabaseBrowser } from "@/lib/supabase";
 import { Logo } from "@/components/Logo";
-import { ResumeSheet } from "@/components/ResumeSheet";
+import { ResumeSheet, TEMPLATES } from "@/components/ResumeSheet";
 import { extractText } from "@/lib/extract-text";
 import { maybeImportDemoData } from "@/lib/import-demo";
 import type { Application, AtsReport, Contact, Resume } from "@/lib/types";
@@ -311,8 +311,9 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         </Field>
         <Field label="Template">
           <select value={template} onChange={(e) => setTemplate(e.target.value)} className={inputCls}>
-            <option value="slate">Slate Banner</option>
-            <option value="modern">Minimal Modern</option>
+            {TEMPLATES.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} — {t.blurb}</option>
+            ))}
           </select>
         </Field>
         <button
@@ -411,41 +412,75 @@ function ResultPanel({
 }
 
 function AtsPanel({ ats }: { ats: AtsReport }) {
-  const verdict = ats.score >= 80 ? "passes screening" : ats.score >= 60 ? "needs work" : "will not parse";
+  const verdict = ats.score >= 80 ? "Passes screening" : ats.score >= 60 ? "Needs work" : "Will not parse";
+  // semicircle arc length ≈ 151 for r=48 — reveal the scored share of it
+  const ARC = 151;
   return (
-    <div>
-      <div className="flex items-center gap-6 mb-6">
-        <span className="stamp text-3xl bg-paper">
-          {ats.score}
-          <span className="block text-[0.5rem] tracking-[0.2em]">{verdict}</span>
+    <div className="grid gap-8 lg:grid-cols-[280px_1fr]">
+      {/* the gauge — same proof language as the landing page */}
+      <div className="cropmarks self-start bg-white p-8 text-center shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)]">
+        <svg viewBox="0 0 120 70" className="mx-auto w-48" aria-hidden="true">
+          <path d="M 12 62 A 48 48 0 0 1 108 62" fill="none" stroke="#e5e1d6" strokeWidth="7" strokeLinecap="round" />
+          <path
+            d="M 12 62 A 48 48 0 0 1 108 62" fill="none"
+            stroke={ats.score >= 60 ? "#c5283d" : "#c77e2e"}
+            strokeWidth="7" strokeLinecap="round" className="arc-score"
+            style={{ strokeDasharray: ARC, strokeDashoffset: ARC - (ARC * ats.score) / 100 }}
+          />
+        </svg>
+        <p className="-mt-7 font-display text-5xl">{ats.score}</p>
+        <p className="mt-1.5 text-[0.6rem] font-bold uppercase tracking-[0.3em] text-crimson">
+          ATS readiness
+        </p>
+        <span className={`stamp mt-5 inline-block text-sm ${ats.score >= 60 ? "text-crimson" : "text-amber"}`}>
+          {verdict}
         </span>
-        <div>
-          <p className="font-semibold">ATS readiness</p>
-          <p className="text-sm text-stone">
-            {ats.coverage}% of the job&apos;s key terms appear in the resume
-          </p>
-        </div>
+        <p className="mt-5 border-t border-rule pt-4 text-xs leading-relaxed text-stone">
+          {ats.coverage}% of the job&apos;s key terms appear in your resume.
+        </p>
       </div>
-      <ul className="divide-y divide-rule">
-        {ats.checks.map((c) => (
-          <li key={c.name} className="py-3 flex gap-3">
-            <span className={c.passed ? "text-crimson font-bold" : "text-amber font-bold"}>
-              {c.passed ? "✓" : "✗"}
+
+      <div className="min-w-0">
+        <h3 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2">
+          Checks parsers run
+        </h3>
+        <ul className="divide-y divide-rule">
+          {ats.checks.map((c) => (
+            <li key={c.name} className="py-3 flex gap-3">
+              <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] font-bold ${
+                c.passed ? "bg-crimson/10 text-crimson" : "bg-amber/15 text-amber"
+              }`}>
+                {c.passed ? "✓" : "✗"}
+              </span>
+              <div>
+                <p className="font-medium text-sm">{c.name}</p>
+                <p className="text-sm text-stone">{c.detail}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+
+        <h3 className="mt-7 text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2">
+          The job&apos;s language
+        </h3>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {ats.keywords_found.map((k) => (
+            <span key={k} className="rounded-sm bg-crimson/10 border border-crimson/40 px-2.5 py-0.5 text-xs font-medium text-crimson">
+              ✓ {k}
             </span>
-            <div>
-              <p className="font-medium text-sm">{c.name}</p>
-              <p className="text-sm text-stone">{c.detail}</p>
-            </div>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-5 flex flex-wrap gap-2">
-        {ats.keywords_found.map((k) => (
-          <span key={k} className="rounded-sm border border-crimson px-2.5 py-0.5 text-xs text-crimson">{k}</span>
-        ))}
-        {ats.keywords_missing.map((k) => (
-          <span key={k} className="rounded-sm border border-dashed border-rule-dark px-2.5 py-0.5 text-xs text-stone">{k}</span>
-        ))}
+          ))}
+          {ats.keywords_missing.map((k) => (
+            <span key={k} className="rounded-sm border border-dashed border-rule-dark px-2.5 py-0.5 text-xs text-stone">
+              {k}
+            </span>
+          ))}
+        </div>
+        {ats.keywords_missing.length > 0 && (
+          <p className="mt-3 text-xs leading-relaxed text-stone">
+            Dashed terms appear in the job but not your resume — add them only
+            where they&apos;re true of you.
+          </p>
+        )}
       </div>
     </div>
   );
