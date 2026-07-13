@@ -1,0 +1,18 @@
+version: 2
+updates:
+  # Dependency-freshness reporting, per the ops-agent design: a bespoke LLM
+  # agent has no safety net without CI/staging, so this uses GitHub's own
+  # free, reliable dependency-update bot instead (Batch D).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

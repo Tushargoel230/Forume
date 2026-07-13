@@ -1,0 +1,65 @@
+name: Ops agents
+
+on:
+  schedule:
+    # 07:00 UTC daily — ops-digest and support-triage, a quiet hour clear of traffic
+    - cron: "0 7 * * *"
+    # 08:00 UTC every Monday — growth-content (weekly cadence, needs a week of signal)
+    - cron: "0 8 * * 1"
+    # 09:00 UTC on the 1st of each month — cost-watchdog
+    - cron: "0 9 1 * *"
+  workflow_dispatch:
+    inputs:
+      agent:
+        description: "Run a single agent by name instead of the schedule"
+        required: false
+        type: string
+
+jobs:
+  daily:
+    if: github.event.schedule == '0 7 * * *' || (github.event_name == 'workflow_dispatch' && inputs.agent == '')
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        agent: [ops-digest, support-triage]
+      fail-fast: false
+    steps:
+      - name: Trigger ${{ matrix.agent }}
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.FORUME_APP_URL }}/api/agents/run" \
+            -H "Content-Type: application/json" \
+            -H "x-agent-secret: ${{ secrets.AGENT_CRON_SECRET }}" \
+            -d "{\"agent\": \"${{ matrix.agent }}\"}"
+
+  weekly:
+    if: github.event.schedule == '0 8 * * 1'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger growth-content
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.FORUME_APP_URL }}/api/agents/run" \
+            -H "Content-Type: application/json" \
+            -H "x-agent-secret: ${{ secrets.AGENT_CRON_SECRET }}" \
+            -d '{"agent": "growth-content"}'
+
+  monthly:
+    if: github.event.schedule == '0 9 1 * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger cost-watchdog
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.FORUME_APP_URL }}/api/agents/run" \
+            -H "Content-Type: application/json" \
+            -H "x-agent-secret: ${{ secrets.AGENT_CRON_SECRET }}" \
+            -d '{"agent": "cost-watchdog"}'
+
+  manual:
+    if: github.event_name == 'workflow_dispatch' && inputs.agent != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ${{ github.event.inputs.agent }}
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.FORUME_APP_URL }}/api/agents/run" \
+            -H "Content-Type: application/json" \
+            -H "x-agent-secret: ${{ secrets.AGENT_CRON_SECRET }}" \
+            -d "{\"agent\": \"${{ github.event.inputs.agent }}\"}"

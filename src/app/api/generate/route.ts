@@ -7,6 +7,7 @@ import {
   type LlmConfig,
 } from "@/lib/llm";
 import { demoRateKey, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
+import { logGenerationEvent } from "@/lib/telemetry";
 import * as prompts from "@/lib/prompts";
 import type { Contact, Fit, FitLevel, Resume } from "@/lib/types";
 
@@ -15,13 +16,15 @@ export const maxDuration = 300;
 async function runWithFallback(
   cfg: LlmConfig, context: string, contact: Contact,
   company: string, role: string, jd: string,
-): Promise<{ resume: Resume; cover: string; keywords: string[]; fit?: Fit }> {
+): Promise<{ resume: Resume; cover: string; keywords: string[]; fit?: Fit; modelUsed: string; usedFallback: boolean }> {
   try {
-    return await runPipeline(cfg, context, contact, company, role, jd);
+    const result = await runPipeline(cfg, context, contact, company, role, jd);
+    return { ...result, modelUsed: cfg.model, usedFallback: false };
   } catch (e) {
     const fb = fallbackConfig(cfg);
     if (!fb) throw e;
-    return await runPipeline(fb, context, contact, company, role, jd);
+    const result = await runPipeline(fb, context, contact, company, role, jd);
+    return { ...result, modelUsed: fb.model, usedFallback: true };
   }
 }
 
@@ -111,10 +114,20 @@ export async function POST(request: Request) {
           { status: 429 },
         );
       }
+      const startedAt = Date.now();
       try {
-        ({ resume, cover, keywords, fit } = await runWithFallback(cfg, context, contact, company, role, jd));
+        const result = await runWithFallback(cfg, context, contact, company, role, jd);
+        ({ resume, cover, keywords, fit } = result);
         isSample = false;
+        logGenerationEvent({
+          route: "generate", identifier: demoRateKey(request), model: result.modelUsed,
+          latencyMs: Date.now() - startedAt, success: true, usedFallback: result.usedFallback,
+        });
       } catch (e) {
+        logGenerationEvent({
+          route: "generate", identifier: demoRateKey(request),
+          latencyMs: Date.now() - startedAt, success: false,
+        });
         return NextResponse.json(
           { error: friendlyLlmError(e) },
           { status: 502 },
@@ -182,9 +195,19 @@ export async function POST(request: Request) {
         { status: 429 },
       );
     }
+    const startedAt = Date.now();
     try {
-      ({ resume, cover, keywords, fit } = await runWithFallback(cfg, context, contact, company, role, jd));
+      const result = await runWithFallback(cfg, context, contact, company, role, jd);
+      ({ resume, cover, keywords, fit } = result);
+      logGenerationEvent({
+        route: "generate", identifier: `user:${user.id}`, model: result.modelUsed,
+        latencyMs: Date.now() - startedAt, success: true, usedFallback: result.usedFallback,
+      });
     } catch (e) {
+      logGenerationEvent({
+        route: "generate", identifier: `user:${user.id}`,
+        latencyMs: Date.now() - startedAt, success: false,
+      });
       return NextResponse.json(
         { error: friendlyLlmError(e) },
         { status: 502 },

@@ -42,3 +42,13 @@ export function supabaseAsUser(accessToken: string): SupabaseClient {
     { global: { headers: { Authorization: `Bearer ${accessToken}` } } },
   );
 }
+
+/** Service-role client for server-only code (agents, rate limiter): bypasses RLS.
+    Never import this from a client component. Returns null when unconfigured
+    so callers can fail open/closed as appropriate rather than crashing. */
+export function supabaseAdmin(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key);
+}

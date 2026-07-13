@@ -5,6 +5,7 @@ import {
   CONTEXT_BUDGET, chat, extractJson, fallbackConfig, friendlyLlmError, llmConfigFromEnv,
 } from "@/lib/llm";
 import { demoRateKey, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
+import { logGenerationEvent } from "@/lib/telemetry";
 import * as prompts from "@/lib/prompts";
 import type { AtsReport, Contact, Resume } from "@/lib/types";
 
@@ -52,7 +53,9 @@ export async function POST(request: Request) {
 
   /* context: demo sends documents in the body; signed-in reads Supabase */
   let context = "";
+  let identifier: string;
   if (demoMode) {
+    identifier = demoRateKey(request);
     const docs: { name: string; content: string }[] = Array.isArray(body.documents)
       ? body.documents.filter(
           (d: unknown): d is { name: string; content: string } =>
@@ -72,6 +75,7 @@ export async function POST(request: Request) {
     if (userErr || !userData.user) {
       return NextResponse.json({ error: "Session expired — sign in again." }, { status: 401 });
     }
+    identifier = `user:${userData.user.id}`;
     const { data: docs } = await supabase.from("documents").select("name, content").order("id");
     context = (docs ?? []).map((d) => `### ${d.name}\n${d.content}`).join("\n\n").slice(0, CONTEXT_BUDGET);
     if (!(await withinDailyLimit(`user:${userData.user.id}`, USER_DAILY_LIMIT))) {
@@ -89,18 +93,31 @@ export async function POST(request: Request) {
   }
 
   const user = prompts.fixUser(context, jd, JSON.stringify(resume, null, 1), problems.join("\n"));
+  const startedAt = Date.now();
   let fixed: Resume;
+  let modelUsed = cfg.model;
+  let usedFallback = false;
   try {
     fixed = extractJson<Resume>(await chat(cfg, prompts.FIX_SYSTEM, user, true, 0.3));
   } catch (e) {
     const fb = fallbackConfig(cfg);
-    if (!fb) return NextResponse.json({ error: friendlyLlmError(e) }, { status: 502 });
+    if (!fb) {
+      logGenerationEvent({ route: "fix", identifier, latencyMs: Date.now() - startedAt, success: false });
+      return NextResponse.json({ error: friendlyLlmError(e) }, { status: 502 });
+    }
     try {
       fixed = extractJson<Resume>(await chat(fb, prompts.FIX_SYSTEM, user, true, 0.3));
+      modelUsed = fb.model;
+      usedFallback = true;
     } catch (e2) {
+      logGenerationEvent({ route: "fix", identifier, latencyMs: Date.now() - startedAt, success: false });
       return NextResponse.json({ error: friendlyLlmError(e2) }, { status: 502 });
     }
   }
+  logGenerationEvent({
+    route: "fix", identifier, model: modelUsed,
+    latencyMs: Date.now() - startedAt, success: true, usedFallback,
+  });
 
   // guard against the model dropping whole sections
   const fixedRec = fixed as unknown as Record<string, unknown>;
