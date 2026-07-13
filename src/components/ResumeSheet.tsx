@@ -20,6 +20,8 @@ type Theme = {
   contact: string;
   sectionTitle: string;
   centered?: boolean;
+  /* border/ring tuning for the optional passport-style CV photo */
+  photo?: string;
 };
 
 const THEMES: Record<string, Theme> = {
@@ -30,6 +32,7 @@ const THEMES: Record<string, Theme> = {
     headline: "text-white/75 mt-1",
     contact: "text-white/55",
     sectionTitle: "border-[#232629]",
+    photo: "ring-1 ring-white/30",
   },
   modern: {
     sheet: "",
@@ -38,6 +41,7 @@ const THEMES: Record<string, Theme> = {
     headline: "text-[#555] mt-1",
     contact: "text-[#777]",
     sectionTitle: "text-[#0f6b5c] border-[#ddd]",
+    photo: "border border-black/10",
   },
   classic: {
     sheet: "",
@@ -47,6 +51,7 @@ const THEMES: Record<string, Theme> = {
     contact: "text-[#777]",
     sectionTitle: "border-[#bbb] text-[#1c1e21]",
     centered: true,
+    photo: "border border-black/10",
   },
   accent: {
     sheet: "border-l-[6px] border-l-[#c5283d]",
@@ -55,6 +60,7 @@ const THEMES: Record<string, Theme> = {
     headline: "text-[#555] mt-1",
     contact: "text-[#777]",
     sectionTitle: "text-[#c5283d] border-[#e8c2c8]",
+    photo: "border-2 border-[#c5283d]/70",
   },
   executive: {
     sheet: "",
@@ -64,6 +70,7 @@ const THEMES: Record<string, Theme> = {
     contact: "text-[#777] border-y border-[#1c1e21] py-1.5 mt-3 inline-block px-4",
     sectionTitle: "font-display normal-case tracking-[0.14em] text-[13px] border-[#1c1e21]",
     centered: true,
+    photo: "border border-[#1c1e21]/25",
   },
   compact: {
     sheet: "text-[12px] leading-[1.35]",
@@ -72,6 +79,7 @@ const THEMES: Record<string, Theme> = {
     headline: "text-[#555] mt-0.5",
     contact: "text-[#777]",
     sectionTitle: "border-[#ddd]",
+    photo: "border border-black/10",
   },
 };
 
@@ -79,10 +87,12 @@ export function ResumeSheet({
   resume,
   contact,
   template,
+  showPhoto = true,
 }: {
   resume: Resume;
   contact: Contact;
   template: string;
+  showPhoto?: boolean;
 }) {
   const t = THEMES[template] ?? THEMES.slate;
   const compact = template === "compact";
@@ -90,12 +100,38 @@ export function ResumeSheet({
     contact.email, contact.phone, contact.location, contact.linkedin, contact.website,
   ].filter(Boolean);
 
+  const photoEl =
+    showPhoto && contact.photo ? (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={contact.photo}
+        alt={contact.name || "Profile photo"}
+        className={`cv-photo shrink-0 w-24 aspect-[3.5/4.5] rounded-md object-cover break-inside-avoid ${t.photo ?? ""}`}
+      />
+    ) : null;
+
+  const textBlock = (
+    <>
+      <h1 className={t.name}>{contact.name || "Your Name"}</h1>
+      {resume.headline && <p className={t.headline}>{resume.headline}</p>}
+      <p className={`mt-2 text-[12px] ${t.contact}`}>{contactBits.join("  ·  ")}</p>
+    </>
+  );
+
   return (
     <div className={`print-sheet bg-white text-[#1c1e21] shadow-[0_16px_44px_-18px_rgba(34,39,31,0.4)] border border-rule text-[13.5px] leading-[1.45] ${t.sheet}`}>
       <header className={t.header}>
-        <h1 className={t.name}>{contact.name || "Your Name"}</h1>
-        {resume.headline && <p className={t.headline}>{resume.headline}</p>}
-        <p className={`mt-2 text-[12px] ${t.contact}`}>{contactBits.join("  ·  ")}</p>
+        {t.centered ? (
+          <div className="flex flex-col items-center">
+            {photoEl && <div className="mb-3">{photoEl}</div>}
+            {textBlock}
+          </div>
+        ) : (
+          <div className="flex items-start justify-between gap-6">
+            <div className="min-w-0">{textBlock}</div>
+            {photoEl}
+          </div>
+        )}
       </header>
 
       <div className={compact ? "px-8 pb-7 pt-2" : "px-10 pb-10 pt-4"}>

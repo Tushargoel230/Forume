@@ -46,6 +46,9 @@ export type Contact = {
   location: string;
   linkedin: string;
   website: string;
+  /* optional European-style CV photo, as a compressed base64 data URL;
+     presentation-only — never sent to the LLM or used in ATS scoring */
+  photo?: string;
 };
 
 export type Application = {
@@ -57,6 +60,7 @@ export type Application = {
   cover_letter: string | null;
   ats: AtsReport | null;
   template: string;
+  show_photo?: boolean;
   is_demo: boolean;
   created_at: string;
 };

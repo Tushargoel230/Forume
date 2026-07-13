@@ -10,6 +10,7 @@ import { ResumeEditor } from "@/components/ResumeEditor";
 import { ResumeSheet, TEMPLATES } from "@/components/ResumeSheet";
 import { atsCheck } from "@/lib/ats";
 import { extractText } from "@/lib/extract-text";
+import { fileToResizedDataUrl } from "@/lib/image";
 import { maybeImportDemoData } from "@/lib/import-demo";
 import type { Application, AtsReport, Contact, Fit, FitLevel, Resume } from "@/lib/types";
 
@@ -246,6 +247,10 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
   const [result, setResult] = useState<Application | null>(openedApplication);
   const [contact, setContact] = useState<Contact>(EMPTY_CONTACT);
   const [resultTab, setResultTab] = useState<ResultTab>("resume");
+  // null = still counting; drives the upload-first empty state for new visitors
+  const [docCount, setDocCount] = useState<number | null>(null);
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
   const supabase = supabaseBrowser();
 
   useEffect(() => {
@@ -261,6 +266,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         location: parsed?.location ?? "",
         linkedin: parsed?.linkedin ?? "",
         website: parsed?.website ?? "",
+        photo: parsed?.photo ?? undefined,
       });
       return;
     }
@@ -278,9 +284,59 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
           location: data?.location ?? "",
           linkedin: data?.linkedin ?? "",
           website: data?.website ?? "",
+          photo: data?.photo ?? undefined,
         });
       });
   }, [supabase, session]);
+
+  // count existing source docs so a brand-new visitor is shown "upload first"
+  useEffect(() => {
+    const isDemo = session.access_token.startsWith("demo-");
+    if (isDemo) {
+      try {
+        const d = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]");
+        setDocCount(Array.isArray(d) ? d.length : 0);
+      } catch {
+        setDocCount(0);
+      }
+    } else {
+      supabase
+        .from("documents")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", session.user.id)
+        .then(({ count }) => setDocCount(count ?? 0));
+    }
+  }, [supabase, session]);
+
+  /** Upload a resume straight from the empty state — same extraction + storage
+      as the Profile "Source documents" card, so it flows into generation. */
+  async function uploadResume(file: File) {
+    setUploadErr("");
+    setUploadingResume(true);
+    try {
+      const content = await extractText(file);
+      const isDemo = session.access_token.startsWith("demo-");
+      if (isDemo) {
+        const prev: Doc[] = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]");
+        const nextDocs = [
+          { id: Date.now(), name: file.name, content, created_at: new Date().toISOString() },
+          ...prev,
+        ];
+        window.localStorage.setItem("forume-demo-docs", JSON.stringify(nextDocs));
+        setDocCount(nextDocs.length);
+      } else {
+        const { error: insertErr } = await supabase
+          .from("documents")
+          .insert({ user_id: session.user.id, name: file.name, content });
+        if (insertErr) throw new Error(insertErr.message);
+        setDocCount((n) => (n ?? 0) + 1);
+      }
+    } catch (e) {
+      setUploadErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setUploadingResume(false);
+    }
+  }
 
   async function generate() {
     if (!jd.trim()) {
@@ -307,7 +363,8 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         },
         body: JSON.stringify({
           jd, company, role, template,
-          ...(isDemo ? { documents, contact } : {}),
+          // photo is presentation-only — never send the data URL to the server/LLM
+          ...(isDemo ? { documents, contact: { ...contact, photo: undefined } } : {}),
         }),
       });
       const data = await res.json();
@@ -315,7 +372,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
       const app: Application = {
         id: data.id, company, role, jd,
         resume: data.resume, cover_letter: data.cover_letter,
-        ats: data.ats, template, is_demo: data.is_demo,
+        ats: data.ats, template, show_photo: true, is_demo: data.is_demo,
         created_at: data.created_at,
       };
       setResult(app);
@@ -342,6 +399,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         .update({
           resume: updated.resume, cover_letter: updated.cover_letter,
           ats: updated.ats, template: updated.template,
+          show_photo: updated.show_photo ?? true,
         })
         .eq("id", updated.id);
     }
@@ -368,7 +426,8 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
           ...(isDemo ? { "X-Demo-Email": session.user.email ?? "", "X-Demo-Id": demoDeviceId() } : {}),
         },
         body: JSON.stringify({
-          jd: result.jd, resume: result.resume, ats: result.ats, contact,
+          jd: result.jd, resume: result.resume, ats: result.ats,
+          contact: { ...contact, photo: undefined },
           ...(isDemo ? { documents } : {}),
         }),
       });
@@ -428,8 +487,37 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         <ResultPanel
           result={result} contact={contact} resultTab={resultTab} setResultTab={setResultTab}
           onTemplateChange={(t) => { setTemplate(t); void updateResult({ template: t }); }}
+          onTogglePhoto={(v) => void updateResult({ show_photo: v })}
           onFix={fixAts} fixing={fixing} onSaveEdit={saveEdit}
         />
+      ) : docCount === 0 ? (
+        <div className="cropmarks bg-paper px-8 py-14 text-center shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)] sm:px-14">
+          <p className="text-xs font-bold uppercase tracking-[0.28em] text-crimson">Step one</p>
+          <h2 className="font-display mt-2 text-3xl leading-tight">Upload your resume to start</h2>
+          <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-stone">
+            Drop in your current resume — Forume reads it and rewrites it for each job you paste.
+            No sign-up needed; it stays in your browser.
+          </p>
+          <div className="mt-7 flex justify-center">
+            <label className={`cursor-pointer rounded-md bg-ink px-6 py-3.5 font-semibold text-paper transition-colors ${uploadingResume ? "opacity-50" : "hover:bg-crimson"}`}>
+              {uploadingResume ? "Reading your resume…" : "Upload resume (PDF, DOCX, TXT)"}
+              <input
+                type="file" accept=".pdf,.docx,.txt,.md" hidden disabled={uploadingResume}
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) uploadResume(f);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
+          {uploadErr && (
+            <p className="mx-auto mt-4 max-w-sm rounded-md border border-amber bg-amber/10 px-4 py-3 text-sm text-ink">{uploadErr}</p>
+          )}
+          <p className="mx-auto mt-6 max-w-xs text-xs leading-relaxed text-stone">
+            Prefer to paste it instead? Open <b>Your sources</b> in the sidebar.
+          </p>
+        </div>
       ) : (
         <div className="cropmarks bg-paper px-8 py-12 text-center text-stone shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)] sm:px-14">
           {/* ghost proof: the sheet your resume will be typeset on */}
@@ -467,17 +555,19 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
 }
 
 function ResultPanel({
-  result, contact, resultTab, setResultTab, onTemplateChange, onFix, fixing, onSaveEdit,
+  result, contact, resultTab, setResultTab, onTemplateChange, onTogglePhoto, onFix, fixing, onSaveEdit,
 }: {
   result: Application;
   contact: Contact;
   resultTab: ResultTab;
   setResultTab: (t: ResultTab) => void;
   onTemplateChange: (t: string) => void;
+  onTogglePhoto: (v: boolean) => void;
   onFix: () => void;
   fixing: boolean;
   onSaveEdit: (resume: Resume, cover: string) => void;
 }) {
+  const showPhoto = result.show_photo ?? true;
   return (
     <div className="cropmarks border border-rule bg-paper shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)]">
       {result.is_demo && (
@@ -507,6 +597,20 @@ function ResultPanel({
           </button>
         ))}
         <div className="ml-auto flex items-center gap-2 p-2 print:hidden">
+          {contact.photo && (
+            <label
+              title="Include your photo on the resume"
+              className="flex cursor-pointer items-center gap-1.5 rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-sm"
+            >
+              <input
+                type="checkbox"
+                checked={showPhoto}
+                onChange={(e) => onTogglePhoto(e.target.checked)}
+                className="accent-crimson"
+              />
+              Photo
+            </label>
+          )}
           <select
             value={result.template}
             onChange={(e) => onTemplateChange(e.target.value)}
@@ -527,7 +631,7 @@ function ResultPanel({
       </div>
       <div className="p-5">
         {resultTab === "resume" && result.resume && (
-          <ResumeSheet resume={result.resume} contact={contact} template={result.template} />
+          <ResumeSheet resume={result.resume} contact={contact} template={result.template} showPhoto={showPhoto} />
         )}
         {resultTab === "cover" && (
           <div className="print-sheet bg-white border border-rule shadow-sm p-10 whitespace-pre-wrap leading-relaxed text-[14px]">
@@ -776,10 +880,54 @@ function Profile({ session }: { session: Session | DemoSession }) {
       user_id: session.user.id,
       name: contact.name, phone: contact.phone, location: contact.location,
       linkedin: contact.linkedin, website: contact.website,
+      photo: contact.photo ?? null,
       updated_at: new Date().toISOString(),
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  }
+
+  /** Resize + compress the chosen image, stash it on contact, and persist. */
+  async function uploadPhoto(file: File) {
+    setUploadError("");
+    try {
+      const dataUrl = await fileToResizedDataUrl(file);
+      const next = { ...contact, photo: dataUrl };
+      setContact(next);
+      const demoSession = getDemoSession();
+      if (demoSession && session.access_token.startsWith("demo-")) {
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("forume-demo-contact", JSON.stringify(next));
+        }
+      } else {
+        await supabase.from("profiles").upsert({
+          user_id: session.user.id,
+          name: next.name, phone: next.phone, location: next.location,
+          linkedin: next.linkedin, website: next.website,
+          photo: dataUrl, updated_at: new Date().toISOString(),
+        });
+      }
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function removePhoto() {
+    const next = { ...contact, photo: undefined };
+    setContact(next);
+    const demoSession = getDemoSession();
+    if (demoSession && session.access_token.startsWith("demo-")) {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("forume-demo-contact", JSON.stringify(next));
+      }
+    } else {
+      await supabase.from("profiles").upsert({
+        user_id: session.user.id,
+        name: next.name, phone: next.phone, location: next.location,
+        linkedin: next.linkedin, website: next.website,
+        photo: null, updated_at: new Date().toISOString(),
+      });
+    }
   }
 
   async function addNote() {
@@ -840,6 +988,52 @@ function Profile({ session }: { session: Session | DemoSession }) {
         <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2 mb-5">
           Contact block
         </h2>
+
+        {/* Optional European-style CV photo */}
+        <div className="mb-5 flex items-start gap-4">
+          <div className="w-24 shrink-0">
+            {contact.photo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={contact.photo}
+                alt="Your CV photo"
+                className="aspect-[3.5/4.5] w-24 rounded-md border border-rule object-cover"
+              />
+            ) : (
+              <div className="grid aspect-[3.5/4.5] w-24 place-items-center rounded-md border border-dashed border-rule-dark text-center text-[11px] leading-tight text-stone">
+                No photo
+              </div>
+            )}
+          </div>
+          <div className="pt-1">
+            <p className="text-sm font-medium">Photo (optional)</p>
+            <p className="mb-3 text-xs text-stone">
+              Common on European CVs. A head-and-shoulders portrait works best.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <label className="cursor-pointer rounded-md border border-ink px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-ink hover:text-paper">
+                {contact.photo ? "Replace" : "Add photo"}
+                <input
+                  type="file" accept="image/*" hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) uploadPhoto(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {contact.photo && (
+                <button
+                  onClick={removePhoto}
+                  className="rounded-md border border-rule-dark px-3 py-1.5 text-sm font-semibold text-stone hover:text-ink"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
         <div className="grid sm:grid-cols-2 gap-x-5">
           {(
             [
@@ -973,7 +1167,7 @@ function History({ onOpen }: { onOpen: () => void }) {
 
     const { data } = await supabase
       .from("applications")
-      .select("id, company, role, jd, resume, cover_letter, ats, template, is_demo, created_at")
+      .select("id, company, role, jd, resume, cover_letter, ats, template, show_photo, is_demo, created_at")
       .order("id", { ascending: false });
     setApps((data as Application[]) ?? []);
   }, [supabase]);

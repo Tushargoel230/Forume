@@ -152,6 +152,10 @@ body {
   .print-sheet {
     position: absolute; inset: 0;
     width: 100%; box-shadow: none !important; border: none !important;
+    /* keep dark headers and the CV photo rendering in print/PDF */
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
+  .cv-photo { break-inside: avoid; }
   @page { size: letter; margin: 0.5in; }
 }
