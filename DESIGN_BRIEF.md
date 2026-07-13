@@ -45,8 +45,8 @@ them back into the Next.js codebase without them turning generic.
 > Primary user goal on this screen: **[e.g. "trust the output and export it"]**.
 >
 > Output ONE self-contained HTML file (inline CSS, no external assets) so it renders
-> as an artifact. Use realistic sample content (a robotics engineer named Tushar
-> Goel), not lorem ipsum. Show me the hardest part done well: **[e.g. "the fit meter
+> as an artifact. Use realistic sample content (a fictional robotics engineer,
+> e.g. "Jonas Weber"), not lorem ipsum. Show me the hardest part done well: **[e.g. "the fit meter
 > and the ATS gauge as beautiful, on-brand data displays"]**. Before coding, give me
 > a 3-line design plan (one risk you're taking) so I can react before you build.
 
