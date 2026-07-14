@@ -11,6 +11,11 @@ updates:
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
+    # Majors need a human: TS 7 / ESLint 10-style bumps break the Next.js
+    # toolchain and there is no CI to catch it before the Vercel build fails.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
