@@ -13,6 +13,7 @@ type AgentRun = {
   status: "running" | "ok" | "error";
   summary: string | null;
   error: string | null;
+  data: Record<string, unknown> | null;
 };
 
 type Feedback = {
@@ -37,16 +38,27 @@ type ContentItem = {
   status: "draft" | "approved" | "rejected" | "posted";
 };
 
-const AGENTS = [
-  { id: "ops-digest", label: "Ops digest" },
-  { id: "support-triage", label: "Support triage" },
-  { id: "growth-content", label: "Growth content" },
-  { id: "cost-watchdog", label: "Cost watchdog" },
-  { id: "cybersecurity-audit", label: "Security audit" },
-  { id: "finance", label: "Finance" },
-  { id: "marketing-analytics", label: "Marketing" },
-  { id: "design-review", label: "Design review" },
+const AGENTS: { id: string; label: string; group: string; cadence: string }[] = [
+  { id: "ops-digest", label: "Ops digest", group: "Operations", cadence: "daily" },
+  { id: "support-triage", label: "Support triage", group: "Operations", cadence: "daily" },
+  { id: "cybersecurity-audit", label: "Security audit", group: "Security", cadence: "daily" },
+  { id: "finance", label: "Finance", group: "Finance", cadence: "weekly" },
+  { id: "cost-watchdog", label: "Cost watchdog", group: "Finance", cadence: "monthly" },
+  { id: "marketing-analytics", label: "Marketing", group: "Growth", cadence: "weekly" },
+  { id: "growth-content", label: "Growth content", group: "Growth", cadence: "weekly" },
+  { id: "design-review", label: "Design review", group: "Product", cadence: "weekly" },
 ];
+
+const AGENT_GROUPS = ["Operations", "Security", "Finance", "Growth", "Product"];
+
+function timeAgo(iso: string | null): string {
+  if (!iso) return "never";
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return "just now";
+  if (s < 5400) return `${Math.round(s / 60)}m ago`;
+  if (s < 129600) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
 
 export default function AdminPage() {
   const [token, setToken] = useState<string | null>(null);
@@ -152,6 +164,47 @@ export default function AdminPage() {
     return <main className="p-10"><p className="text-crimson">{error}</p></main>;
   }
 
+  // Latest run per agent → the status board + the top-line health tiles.
+  const latestByAgent = new Map<string, AgentRun>();
+  for (const run of agentRuns) if (!latestByAgent.has(run.agent)) latestByAgent.set(run.agent, run);
+
+  const finData = (latestByAgent.get("finance")?.data ?? latestByAgent.get("cost-watchdog")?.data) as
+    | { pct_of_free_ceiling?: number; fraction_of_ceiling?: number } | undefined;
+  const pctCeiling = finData?.pct_of_free_ceiling ?? finData?.fraction_of_ceiling;
+  const secRun = latestByAgent.get("cybersecurity-audit");
+  const securityClean = secRun ? secRun.status === "ok" && !/found \d+ issue/.test(secRun.summary ?? "") : undefined;
+  const opsData = latestByAgent.get("ops-digest")?.data as { stats?: { signups?: { last_7_days?: number } } } | undefined;
+  const mktData = latestByAgent.get("marketing-analytics")?.data as { stats?: { signups_last_7d?: number } } | undefined;
+  const signups7d = opsData?.stats?.signups?.last_7_days ?? mktData?.stats?.signups_last_7d;
+  const ranOk = AGENTS.filter((a) => latestByAgent.get(a.id)?.status === "ok").length;
+  const anyError = AGENTS.some((a) => latestByAgent.get(a.id)?.status === "error");
+
+  const tiles: { label: string; value: string; tone: "ok" | "warn" | "bad" | "muted" }[] = [
+    {
+      label: "Security",
+      value: securityClean === undefined ? "not run" : securityClean ? "clean" : "needs review",
+      tone: securityClean === undefined ? "muted" : securityClean ? "ok" : "bad",
+    },
+    {
+      label: "Cost headroom",
+      value: pctCeiling === undefined ? "not run" : `${Math.round(pctCeiling * 100)}% of free tier`,
+      tone: pctCeiling === undefined ? "muted" : pctCeiling >= 0.6 ? "warn" : "ok",
+    },
+    {
+      label: "Signups (7d)",
+      value: signups7d === undefined ? "not run" : String(signups7d),
+      tone: signups7d === undefined ? "muted" : signups7d > 0 ? "ok" : "warn",
+    },
+    {
+      label: "Agents healthy",
+      value: `${ranOk}/${AGENTS.length}`,
+      tone: anyError ? "bad" : ranOk === AGENTS.length ? "ok" : "muted",
+    },
+  ];
+  const toneClass = {
+    ok: "text-pine", warn: "text-amber", bad: "text-crimson", muted: "text-stone",
+  } as const;
+
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       <header className="mb-10 flex items-center justify-between border-b border-rule pb-5">
@@ -162,23 +215,61 @@ export default function AdminPage() {
       <p className="text-xs font-bold uppercase tracking-[0.28em] text-crimson">Composing room · back office</p>
       <h1 className="font-display text-4xl mt-1 mb-10">Operations</h1>
 
+      {/* System status tiles — derived from each agent's most recent run */}
+      <section className="mb-10 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {tiles.map((t) => (
+          <div key={t.label} className="rounded-md border border-rule bg-paper p-4">
+            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-fog">{t.label}</p>
+            <p className={`mt-1 font-display text-xl ${toneClass[t.tone]}`}>{t.value}</p>
+          </div>
+        ))}
+      </section>
+
+      {/* The agent team — grouped by domain, each with its last run + a Run button */}
       <section className="mb-12">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-[0.2em] text-stone">Agents</h2>
-        <div className="flex flex-wrap gap-3">
-          {AGENTS.map((a) => (
-            <button
-              key={a.id}
-              onClick={() => trigger(a.id)}
-              disabled={busy === a.id}
-              className="rounded-md border border-rule-dark bg-white px-4 py-2 text-sm font-semibold hover:border-ink disabled:opacity-50"
-            >
-              {busy === a.id ? "Running…" : `Run ${a.label}`}
-            </button>
-          ))}
+        <h2 className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-stone">The agent team</h2>
+        <div className="space-y-6">
+          {AGENT_GROUPS.map((group) => {
+            const inGroup = AGENTS.filter((a) => a.group === group);
+            if (inGroup.length === 0) return null;
+            return (
+              <div key={group}>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.22em] text-crimson">{group}</p>
+                <ul className="space-y-2">
+                  {inGroup.map((a) => {
+                    const run = latestByAgent.get(a.id);
+                    const status = run?.status ?? "idle";
+                    return (
+                      <li key={a.id} className="rounded-md border border-rule bg-paper p-4">
+                        <div className="flex items-center gap-3">
+                          <span
+                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                              status === "ok" ? "bg-pine" : status === "error" ? "bg-crimson" : status === "running" ? "bg-amber" : "bg-rule-dark"
+                            }`}
+                            title={status}
+                          />
+                          <span className="font-semibold">{a.label}</span>
+                          <span className="text-xs text-fog">· {a.cadence} · {run ? timeAgo(run.started_at) : "never run"}</span>
+                          <button
+                            onClick={() => trigger(a.id)}
+                            disabled={busy === a.id}
+                            className="ml-auto rounded-md border border-rule-dark bg-white px-3 py-1 text-xs font-semibold hover:border-ink disabled:opacity-50"
+                          >
+                            {busy === a.id ? "Running…" : "Run now"}
+                          </button>
+                        </div>
+                        {run?.summary && <p className="mt-2 text-sm text-stone line-clamp-3">{run.summary}</p>}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            );
+          })}
         </div>
 
-        <div className="mt-4 rounded-md border border-rule bg-paper p-4">
-          <p className="mb-2 text-sm font-semibold">Legal checklist</p>
+        <div className="mt-6 rounded-md border border-rule bg-paper p-4">
+          <p className="mb-2 text-sm font-semibold">Legal checklist <span className="font-normal text-fog">· on-demand</span></p>
           <p className="mb-3 text-xs text-stone">
             Describe a change you&apos;re about to ship (new data collected, a new
             third-party service, etc.) — this checks it against a short compliance checklist.
@@ -199,26 +290,6 @@ export default function AdminPage() {
             {busy === "legal-checklist" ? "Checking…" : "Run legal checklist"}
           </button>
         </div>
-
-        <ul className="mt-6 space-y-3">
-          {agentRuns.map((run) => (
-            <li key={run.id} className="rounded-md border border-rule bg-paper p-4 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold">{run.agent}</span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                    run.status === "ok" ? "bg-pine/10 text-pine" : run.status === "error" ? "bg-crimson/10 text-crimson" : "bg-amber/10 text-amber"
-                  }`}
-                >
-                  {run.status}
-                </span>
-              </div>
-              <p className="mt-1 text-stone">{run.summary ?? run.error ?? "—"}</p>
-              <p className="mt-1 text-xs text-fog">{new Date(run.started_at).toLocaleString()}</p>
-            </li>
-          ))}
-          {agentRuns.length === 0 && <p className="text-stone text-sm">No runs yet.</p>}
-        </ul>
       </section>
 
       <section className="mb-12">
