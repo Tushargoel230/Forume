@@ -1,9 +1,18 @@
 /* Server-side LLM plumbing shared by /api/generate and /api/fix. */
 
+import type { Resume } from "./types";
+
 export type LlmConfig = { baseUrl: string; apiKey: string; model: string };
 
-// keep sequential calls inside Groq's free-tier 12k tokens/minute
-export const CONTEXT_BUDGET = 11000;
+// Character budget for the candidate background packed into each prompt.
+// Default fits Groq's free-tier ~12k tokens/minute; raise LLM_CONTEXT_BUDGET
+// when pointing LLM_BASE_URL at a large-context provider (e.g. Gemini free tier
+// via its OpenAI-compatible endpoint) so long resumes are no longer truncated.
+export const CONTEXT_BUDGET = Number(process.env.LLM_CONTEXT_BUDGET) || 11000;
+
+// Cap output so a runaway completion can't get provider-side truncated into
+// invalid JSON. A one-page resume JSON fits comfortably under 4k tokens.
+const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 4096;
 
 export function llmConfigFromEnv(): LlmConfig | null {
   const baseUrl = process.env.LLM_BASE_URL;
@@ -40,6 +49,7 @@ export async function chat(
         ],
         ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
         temperature: temperature ?? (jsonMode ? 0.4 : 0.7),
+        max_tokens: MAX_TOKENS,
       }),
     });
     if (res.ok) {
@@ -63,7 +73,42 @@ export function extractJson<T>(text: string): T {
   const start = t.indexOf("{");
   const end = t.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error("No JSON object in model output");
-  return JSON.parse(t.slice(start, end + 1)) as T;
+  const slice = t.slice(start, end + 1);
+  try {
+    return JSON.parse(slice) as T;
+  } catch {
+    // light repair: strip trailing commas before } or ] (a common model slip)
+    const repaired = slice.replace(/,\s*([}\]])/g, "$1");
+    return JSON.parse(repaired) as T;
+  }
+}
+
+/* Normalize a parsed resume object into a valid Resume shape so a missing or
+   mistyped key from the model never crashes rendering or ATS scoring. */
+export function coerceResume(raw: unknown): Resume {
+  const o = (raw ?? {}) as Record<string, unknown>;
+  const str = (v: unknown): string => (typeof v === "string" ? v : "");
+  const arr = <U>(v: unknown, map: (x: Record<string, unknown>) => U): U[] =>
+    Array.isArray(v) ? v.filter((x) => x && typeof x === "object").map((x) => map(x as Record<string, unknown>)) : [];
+  const strList = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+  return {
+    headline: str(o.headline),
+    summary: str(o.summary),
+    skills: arr(o.skills, (g) => ({ category: str(g.category), items: strList(g.items) })),
+    experience: arr(o.experience, (j) => ({
+      title: str(j.title), company: str(j.company), location: str(j.location),
+      dates: str(j.dates), bullets: strList(j.bullets),
+    })),
+    projects: arr(o.projects, (p) => ({
+      name: str(p.name), tech: str(p.tech), bullets: strList(p.bullets),
+    })),
+    education: arr(o.education, (e) => ({
+      degree: str(e.degree), school: str(e.school), dates: str(e.dates), details: str(e.details),
+    })),
+    certifications: strList(o.certifications),
+  };
 }
 
 export function friendlyLlmError(e: unknown): string {

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAsUser } from "@/lib/supabase";
 import { atsCheck } from "@/lib/ats";
 import {
-  CONTEXT_BUDGET, chat, extractJson, fallbackConfig, friendlyLlmError, llmConfigFromEnv,
+  CONTEXT_BUDGET, chat, coerceResume, extractJson, fallbackConfig, friendlyLlmError, llmConfigFromEnv,
 } from "@/lib/llm";
 import { demoRateKey, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
 import { logGenerationEvent } from "@/lib/telemetry";
@@ -98,7 +98,7 @@ export async function POST(request: Request) {
   let modelUsed = cfg.model;
   let usedFallback = false;
   try {
-    fixed = extractJson<Resume>(await chat(cfg, prompts.FIX_SYSTEM, user, true, 0.3));
+    fixed = coerceResume(extractJson(await chat(cfg, prompts.FIX_SYSTEM, user, true, 0.3)));
   } catch (e) {
     const fb = fallbackConfig(cfg);
     if (!fb) {
@@ -106,7 +106,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: friendlyLlmError(e) }, { status: 502 });
     }
     try {
-      fixed = extractJson<Resume>(await chat(fb, prompts.FIX_SYSTEM, user, true, 0.3));
+      fixed = coerceResume(extractJson(await chat(fb, prompts.FIX_SYSTEM, user, true, 0.3)));
       modelUsed = fb.model;
       usedFallback = true;
     } catch (e2) {

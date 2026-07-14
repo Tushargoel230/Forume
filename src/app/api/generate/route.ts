@@ -3,7 +3,7 @@ import { supabaseAsUser } from "@/lib/supabase";
 import { atsCheck } from "@/lib/ats";
 import { DEMO_COVER, DEMO_KEYWORDS, DEMO_RESUME } from "@/lib/demo";
 import {
-  CONTEXT_BUDGET, chat, extractJson, fallbackConfig, friendlyLlmError, llmConfigFromEnv,
+  CONTEXT_BUDGET, chat, coerceResume, extractJson, fallbackConfig, friendlyLlmError, llmConfigFromEnv,
   type LlmConfig,
 } from "@/lib/llm";
 import { demoRateKey, withinDailyLimit, DEMO_DAILY_LIMIT, USER_DAILY_LIMIT } from "@/lib/rate-limit";
@@ -44,7 +44,7 @@ async function runPipeline(
 
   const resumeRaw = await chat(cfg, prompts.RESUME_SYSTEM,
     prompts.resumeUser(context, co, ro, jd, analysisStr), true);
-  const resume = extractJson<Resume>(resumeRaw);
+  const resume = coerceResume(extractJson(resumeRaw));
 
   const cover = (
     await chat(cfg, prompts.COVER_SYSTEM,
