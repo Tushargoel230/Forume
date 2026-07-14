@@ -3,6 +3,22 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabase";
+import { Logo } from "@/components/Logo";
+
+function CallbackCard({ message, spinning = true }: { message: string; spinning?: boolean }) {
+  return (
+    <main className="flex-1 grid place-items-center px-6 py-20">
+      <div className="w-full max-w-md rounded-sm border border-rule bg-paper p-8 text-center shadow-[0_18px_50px_-24px_rgba(34,39,31,0.35)]">
+        <div className="mb-5 flex justify-center"><Logo /></div>
+        {spinning && (
+          <div className="mx-auto mb-4 h-6 w-6 animate-spin rounded-full border-2 border-rule-dark border-t-crimson" />
+        )}
+        <p className="font-display text-2xl mb-2">Finishing sign-in</p>
+        <p className="text-sm text-stone">{message}</p>
+      </div>
+    </main>
+  );
+}
 
 function AuthCallbackContent() {
   const router = useRouter();
@@ -44,19 +60,13 @@ function AuthCallbackContent() {
     void finishSignIn();
   }, [router, searchParams]);
 
-  return (
-    <main className="flex-1 grid place-items-center px-6 py-20">
-      <div className="w-full max-w-md rounded-sm border border-rule bg-paper p-8 text-center shadow-[0_18px_50px_-24px_rgba(34,39,31,0.35)]">
-        <p className="font-display text-2xl mb-2">Finishing sign-in</p>
-        <p className="text-sm text-stone">{message}</p>
-      </div>
-    </main>
-  );
+  const errored = message !== "Finishing sign-in…";
+  return <CallbackCard message={message} spinning={!errored} />;
 }
 
 export default function AuthCallback() {
   return (
-    <Suspense fallback={<main className="flex-1 grid place-items-center px-6 py-20"><div className="w-full max-w-md rounded-sm border border-rule bg-paper p-8 text-center shadow-[0_18px_50px_-24px_rgba(34,39,31,0.35)]"><p className="font-display text-2xl mb-2">Finishing sign-in</p><p className="text-sm text-stone">Preparing your session…</p></div></main>}>
+    <Suspense fallback={<CallbackCard message="Preparing your session…" />}>
       <AuthCallbackContent />
     </Suspense>
   );

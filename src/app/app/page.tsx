@@ -243,6 +243,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
   const [template, setTemplate] = useState(openedApplication?.template ?? "slate");
   const [busy, setBusy] = useState(false);
   const [fixing, setFixing] = useState(false);
+  const [regenningCover, setRegenningCover] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<Application | null>(openedApplication);
   const [contact, setContact] = useState<Contact>(EMPTY_CONTACT);
@@ -441,7 +442,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
     }
   }
 
-  function saveEdit(resume: Resume, cover: string) {
+  function saveEditResume(resume: Resume) {
     if (!result) return;
     const keywords = [
       ...(result.ats?.keywords_found ?? []),
@@ -449,8 +450,48 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
     ];
     const ats = atsCheck(resume, contact, keywords);
     if (result.ats?.fit) ats.fit = result.ats.fit; // fit judges the person, not the draft
-    void updateResult({ resume, cover_letter: cover, ats });
+    void updateResult({ resume, ats });
     setResultTab("resume");
+  }
+
+  function saveCover(cover: string) {
+    void updateResult({ cover_letter: cover });
+  }
+
+  /** Rewrite just the cover letter, optionally steering tone/length. */
+  async function regenCover(tone: string, length: string) {
+    if (!result) return;
+    setRegenningCover(true);
+    setError("");
+    try {
+      const isDemo = session.access_token.startsWith("demo-");
+      let documents: { name: string; content: string }[] = [];
+      if (isDemo) {
+        try {
+          documents = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]");
+        } catch { documents = []; }
+      }
+      const res = await fetch("/api/cover", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+          ...(isDemo ? { "X-Demo-Email": session.user.email ?? "", "X-Demo-Id": demoDeviceId() } : {}),
+        },
+        body: JSON.stringify({
+          jd: result.jd, company: result.company, role: result.role,
+          contact: { ...contact, photo: undefined }, tone, length,
+          ...(isDemo ? { documents } : {}),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      await updateResult({ cover_letter: data.cover_letter });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRegenningCover(false);
+    }
   }
 
   return (
@@ -488,7 +529,8 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
           result={result} contact={contact} resultTab={resultTab} setResultTab={setResultTab}
           onTemplateChange={(t) => { setTemplate(t); void updateResult({ template: t }); }}
           onTogglePhoto={(v) => void updateResult({ show_photo: v })}
-          onFix={fixAts} fixing={fixing} onSaveEdit={saveEdit}
+          onFix={fixAts} fixing={fixing} onSaveEdit={saveEditResume}
+          onSaveCover={saveCover} onRegenCover={regenCover} regenningCover={regenningCover}
         />
       ) : docCount === 0 ? (
         <div className="cropmarks bg-paper px-8 py-14 text-center shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)] sm:px-14">
@@ -556,6 +598,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
 
 function ResultPanel({
   result, contact, resultTab, setResultTab, onTemplateChange, onTogglePhoto, onFix, fixing, onSaveEdit,
+  onSaveCover, onRegenCover, regenningCover,
 }: {
   result: Application;
   contact: Contact;
@@ -565,7 +608,10 @@ function ResultPanel({
   onTogglePhoto: (v: boolean) => void;
   onFix: () => void;
   fixing: boolean;
-  onSaveEdit: (resume: Resume, cover: string) => void;
+  onSaveEdit: (resume: Resume) => void;
+  onSaveCover: (cover: string) => void;
+  onRegenCover: (tone: string, length: string) => void;
+  regenningCover: boolean;
 }) {
   const showPhoto = result.show_photo ?? true;
   return (
@@ -576,6 +622,7 @@ function ResultPanel({
           generate again — Forume will write from your real experience.
         </p>
       )}
+      {!result.is_demo && <InterviewPrompt />}
       <div className="flex flex-wrap items-center border-b border-rule">
         {(
           [
@@ -634,9 +681,14 @@ function ResultPanel({
           <ResumeSheet resume={result.resume} contact={contact} template={result.template} showPhoto={showPhoto} />
         )}
         {resultTab === "cover" && (
-          <div className="print-sheet bg-white border border-rule shadow-sm p-10 whitespace-pre-wrap leading-relaxed text-[14px]">
-            {result.cover_letter}
-          </div>
+          <CoverPanel
+            key={result.cover_letter}
+            cover={result.cover_letter ?? ""}
+            onSave={onSaveCover}
+            onRegen={onRegenCover}
+            regenning={regenningCover}
+            canRegen={!result.is_demo}
+          />
         )}
         {resultTab === "ats" && result.ats && (
           <AtsPanel ats={result.ats} onFix={onFix} fixing={fixing} canFix={!result.is_demo} />
@@ -645,12 +697,149 @@ function ResultPanel({
         {resultTab === "edit" && result.resume && (
           <ResumeEditor
             resume={result.resume}
-            coverLetter={result.cover_letter ?? ""}
             onSave={onSaveEdit}
             onCancel={() => setResultTab("resume")}
           />
         )}
       </div>
+    </div>
+  );
+}
+
+/* Growth hook: quietly ask whether Forume helped land an interview. A "yes"
+   is investor-grade proof (a case study); the answer lands in the feedback
+   table for the founder to follow up on. Dismissed state persists per browser. */
+function InterviewPrompt() {
+  const [state, setState] = useState<"ask" | "yes" | "done" | "hidden">("hidden");
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("forume-interview-asked") !== "1") setState("ask");
+    } catch { /* ignore */ }
+  }, []);
+
+  function remember() {
+    try { window.localStorage.setItem("forume-interview-asked", "1"); } catch { /* ignore */ }
+  }
+  function send(message: string) {
+    void fetch("/api/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, kind: "interview-outcome" }),
+    });
+  }
+
+  if (state === "hidden") return null;
+  if (state === "done") return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-b border-rule bg-pine/5 px-5 py-2.5 text-sm print:hidden">
+      {state === "ask" && (
+        <>
+          <span className="font-medium">Did a Forume resume get you an interview?</span>
+          <button
+            onClick={() => { remember(); setState("yes"); }}
+            className="rounded-md border border-pine px-3 py-1 text-xs font-semibold text-pine hover:bg-pine hover:text-paper transition-colors"
+          >
+            Yes! 🎉
+          </button>
+          <button
+            onClick={() => { remember(); send("Not yet"); setState("done"); }}
+            className="text-xs text-stone hover:text-ink"
+          >
+            Not yet
+          </button>
+          <button onClick={() => setState("done")} className="ml-auto text-xs text-stone hover:text-ink" aria-label="Dismiss">✕</button>
+        </>
+      )}
+      {state === "yes" && (
+        <>
+          <span className="font-medium text-pine">Amazing — where, if you don&apos;t mind sharing?</span>
+          <input
+            autoFocus
+            placeholder="Company / role (optional)"
+            className="min-w-0 flex-1 rounded-md border border-rule-dark bg-white px-3 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-ink"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                send(`Got an interview: ${(e.target as HTMLInputElement).value || "(unspecified)"}`);
+                setState("done");
+              }
+            }}
+          />
+          <button
+            onClick={(e) => {
+              const input = (e.currentTarget.previousElementSibling as HTMLInputElement);
+              send(`Got an interview: ${input?.value || "(unspecified)"}`);
+              setState("done");
+            }}
+            className="rounded-md bg-ink px-3 py-1 text-xs font-semibold text-paper hover:bg-crimson transition-colors"
+          >
+            Share
+          </button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CoverPanel({
+  cover, onSave, onRegen, regenning, canRegen,
+}: {
+  cover: string;
+  onSave: (cover: string) => void;
+  onRegen: (tone: string, length: string) => void;
+  regenning: boolean;
+  canRegen: boolean;
+}) {
+  const [text, setText] = useState(cover);
+  const [tone, setTone] = useState("professional");
+  const [length, setLength] = useState("standard");
+  const dirty = text !== cover;
+  const selCls = "rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink";
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2 print:hidden">
+        {canRegen && (
+          <>
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-stone">Rewrite</span>
+            <select value={tone} onChange={(e) => setTone(e.target.value)} className={selCls} title="Tone" disabled={regenning}>
+              {["professional", "warm", "confident", "enthusiastic", "formal"].map((t) => (
+                <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>
+              ))}
+            </select>
+            <select value={length} onChange={(e) => setLength(e.target.value)} className={selCls} title="Length" disabled={regenning}>
+              <option value="short">Short</option>
+              <option value="standard">Standard</option>
+              <option value="detailed">Detailed</option>
+            </select>
+            <button
+              onClick={() => onRegen(tone, length)}
+              disabled={regenning}
+              className="rounded-md border border-ink px-3.5 py-1.5 text-sm font-semibold hover:bg-ink hover:text-paper transition-colors disabled:opacity-50"
+            >
+              {regenning ? "Rewriting…" : "Regenerate"}
+            </button>
+          </>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {dirty && <span className="text-xs text-amber">Unsaved edits</span>}
+          <button
+            onClick={() => onSave(text)}
+            disabled={!dirty}
+            className="rounded-md bg-ink px-4 py-1.5 text-sm font-semibold text-paper transition-colors hover:bg-crimson disabled:opacity-40"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={20}
+        className="print-sheet w-full resize-y rounded-none border border-rule bg-white p-10 text-[14px] leading-relaxed shadow-sm focus:outline-none focus:ring-2 focus:ring-ink"
+        aria-label="Cover letter"
+      />
     </div>
   );
 }

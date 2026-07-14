@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        agent: [ops-digest, support-triage]
+        agent: [ops-digest, support-triage, cybersecurity-audit]
       fail-fast: false
     steps:
       - name: Trigger ${{ matrix.agent }}
@@ -34,13 +34,17 @@ jobs:
   weekly:
     if: github.event.schedule == '0 8 * * 1'
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        agent: [growth-content, finance, marketing-analytics, design-review]
+      fail-fast: false
     steps:
-      - name: Trigger growth-content
+      - name: Trigger ${{ matrix.agent }}
         run: |
           curl --fail-with-body -sS -X POST "${{ secrets.FORUME_APP_URL }}/api/agents/run" \
             -H "Content-Type: application/json" \
             -H "x-agent-secret: ${{ secrets.AGENT_CRON_SECRET }}" \
-            -d '{"agent": "growth-content"}'
+            -d "{\"agent\": \"${{ matrix.agent }}\"}"
 
   monthly:
     if: github.event.schedule == '0 9 1 * *'

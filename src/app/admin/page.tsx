@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabaseBrowser } from "@/lib/supabase";
+import { Logo } from "@/components/Logo";
 
 type AgentRun = {
   id: number;
@@ -41,6 +42,10 @@ const AGENTS = [
   { id: "support-triage", label: "Support triage" },
   { id: "growth-content", label: "Growth content" },
   { id: "cost-watchdog", label: "Cost watchdog" },
+  { id: "cybersecurity-audit", label: "Security audit" },
+  { id: "finance", label: "Finance" },
+  { id: "marketing-analytics", label: "Marketing" },
+  { id: "design-review", label: "Design review" },
 ];
 
 export default function AdminPage() {
@@ -148,8 +153,14 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="mx-auto max-w-4xl px-6 py-12">
-      <h1 className="font-display text-3xl mb-8">Operations</h1>
+    <main className="mx-auto max-w-4xl px-6 py-10">
+      <header className="mb-10 flex items-center justify-between border-b border-rule pb-5">
+        <Link href="/"><Logo /></Link>
+        <Link href="/app" className="text-sm font-semibold text-stone hover:text-ink">Open the app →</Link>
+      </header>
+
+      <p className="text-xs font-bold uppercase tracking-[0.28em] text-crimson">Composing room · back office</p>
+      <h1 className="font-display text-4xl mt-1 mb-10">Operations</h1>
 
       <section className="mb-12">
         <h2 className="mb-3 text-sm font-bold uppercase tracking-[0.2em] text-stone">Agents</h2>
@@ -195,9 +206,9 @@ export default function AdminPage() {
               <div className="flex items-center justify-between">
                 <span className="font-semibold">{run.agent}</span>
                 <span
-                  className={
-                    run.status === "ok" ? "text-emerald-700" : run.status === "error" ? "text-crimson" : "text-stone"
-                  }
+                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    run.status === "ok" ? "bg-pine/10 text-pine" : run.status === "error" ? "bg-crimson/10 text-crimson" : "bg-amber/10 text-amber"
+                  }`}
                 >
                   {run.status}
                 </span>
@@ -222,7 +233,7 @@ export default function AdminPage() {
                     <button
                       onClick={() => setContentStatus(c.id, "approved")}
                       disabled={busy === `content-${c.id}`}
-                      className="text-xs font-semibold text-emerald-700 hover:underline"
+                      className="text-xs font-semibold text-pine hover:underline"
                     >
                       Approve
                     </button>

@@ -10,6 +10,7 @@ export const TEMPLATES: { id: string; name: string; blurb: string }[] = [
   { id: "accent", name: "Scarlet", blurb: "A crimson edge" },
   { id: "executive", name: "Regent", blurb: "Small caps, senior calm" },
   { id: "compact", name: "Folio", blurb: "Dense — fits one page" },
+  { id: "lebenslauf", name: "Lebenslauf", blurb: "German tabular CV, dates left" },
 ];
 
 type Theme = {
@@ -94,6 +95,9 @@ export function ResumeSheet({
   template: string;
   showPhoto?: boolean;
 }) {
+  if (template === "lebenslauf") {
+    return <LebenslaufSheet resume={resume} contact={contact} showPhoto={showPhoto} />;
+  }
   const t = THEMES[template] ?? THEMES.slate;
   const compact = template === "compact";
   const contactBits = [
@@ -241,5 +245,132 @@ function Section({
       </h2>
       {children}
     </section>
+  );
+}
+
+/* German-style Lebenslauf: a dates-left tabular CV with a top-right photo and a
+   personal-details block — the layout German recruiters expect (and no US-market
+   competitor renders natively). Section headings are in German; body content
+   stays in whatever language the resume was written in. */
+function LebenslaufSheet({
+  resume, contact, showPhoto,
+}: {
+  resume: Resume;
+  contact: Contact;
+  showPhoto: boolean;
+}) {
+  const contactBits = [
+    contact.email, contact.phone, contact.location, contact.linkedin, contact.website,
+  ].filter(Boolean);
+
+  return (
+    <div className="print-sheet bg-white text-[#1c1e21] shadow-[0_16px_44px_-18px_rgba(34,39,31,0.4)] border border-rule text-[13px] leading-[1.5]">
+      <header className="flex items-start justify-between gap-6 border-b-2 border-[#1c1e21] px-10 pt-10 pb-5">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#8a8d91]">Lebenslauf</p>
+          <h1 className="mt-1 font-display text-[30px] leading-tight tracking-[0.02em]">{contact.name || "Ihr Name"}</h1>
+          {resume.headline && <p className="mt-1 text-[#555] italic font-display">{resume.headline}</p>}
+          <p className="mt-3 text-[12px] text-[#666] leading-relaxed">{contactBits.join("  ·  ")}</p>
+        </div>
+        {showPhoto && contact.photo && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={contact.photo}
+            alt={contact.name || "Bewerbungsfoto"}
+            className="cv-photo shrink-0 w-28 aspect-[3.5/4.5] rounded-sm object-cover border border-[#1c1e21]/25 break-inside-avoid"
+          />
+        )}
+      </header>
+
+      <div className="px-10 pb-10 pt-5">
+        {resume.summary && (
+          <LlSection title="Profil">
+            <p>{resume.summary}</p>
+          </LlSection>
+        )}
+
+        {resume.experience?.length > 0 && (
+          <LlSection title="Berufserfahrung">
+            {resume.experience.map((j, i) => (
+              <LlRow key={i} dates={j.dates}>
+                <p>
+                  <b className="font-semibold">{j.title}</b>
+                  <span className="text-[#666]"> — {j.company}{j.location ? `, ${j.location}` : ""}</span>
+                </p>
+                <ul className="list-disc ml-5 mt-1 space-y-0.5">
+                  {j.bullets.map((b, k) => <li key={k}>{b}</li>)}
+                </ul>
+              </LlRow>
+            ))}
+          </LlSection>
+        )}
+
+        {resume.projects?.length > 0 && (
+          <LlSection title="Projekte">
+            {resume.projects.map((p, i) => (
+              <LlRow key={i} dates={p.tech}>
+                <p><b className="font-semibold">{p.name}</b></p>
+                <ul className="list-disc ml-5 mt-1 space-y-0.5">
+                  {p.bullets.map((b, k) => <li key={k}>{b}</li>)}
+                </ul>
+              </LlRow>
+            ))}
+          </LlSection>
+        )}
+
+        {resume.education?.length > 0 && (
+          <LlSection title="Ausbildung">
+            {resume.education.map((e, i) => (
+              <LlRow key={i} dates={e.dates}>
+                <p>
+                  <b className="font-semibold">{e.degree}</b>
+                  <span className="text-[#666]"> — {e.school}</span>
+                </p>
+                {e.details && <p className="text-[12px] text-[#666]">{e.details}</p>}
+              </LlRow>
+            ))}
+          </LlSection>
+        )}
+
+        {resume.skills?.length > 0 && (
+          <LlSection title="Kenntnisse">
+            {resume.skills.map((g) => (
+              <LlRow key={g.category} dates={g.category}>
+                <p>{g.items.join(", ")}</p>
+              </LlRow>
+            ))}
+          </LlSection>
+        )}
+
+        {resume.certifications?.length > 0 && (
+          <LlSection title="Zertifikate">
+            <LlRow dates="">
+              <ul className="list-disc ml-5 space-y-0.5">
+                {resume.certifications.map((c, i) => <li key={i}>{c}</li>)}
+              </ul>
+            </LlRow>
+          </LlSection>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LlSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mt-5 first:mt-0">
+      <h2 className="mb-3 text-[12px] font-bold uppercase tracking-[0.2em] text-[#1c1e21]">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+/* One tabular row: the date/label sits in a fixed left column, content on the right. */
+function LlRow({ dates, children }: { dates?: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-3 grid grid-cols-[130px_1fr] gap-4 break-inside-avoid">
+      <div className="text-[12px] text-[#666] whitespace-pre-line">{dates}</div>
+      <div>{children}</div>
+    </div>
   );
 }
