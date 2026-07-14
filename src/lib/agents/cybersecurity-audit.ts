@@ -11,9 +11,11 @@ export const cybersecurityAudit: Agent = async (ctx) => {
   // 1) Every user-owned row must have an owner. A null user_id on these tables
   //    means a row RLS can't scope — the exact shape of a cross-user leak.
   for (const table of ["applications", "documents", "profiles"] as const) {
+    // Select user_id (the RLS column present on all three) rather than "id" —
+    // profiles is keyed on user_id and has no id column.
     const { count, error } = await ctx.supabase
       .from(table)
-      .select("id", { count: "exact", head: true })
+      .select("user_id", { count: "exact", head: true })
       .is("user_id", null);
     if (error) {
       findings.push(`Could not audit ${table}: ${error.message}`);
