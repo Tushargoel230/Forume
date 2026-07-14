@@ -235,12 +235,13 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className={compact ? "mt-2.5" : "mt-4"}>
+    <section className={compact ? "mt-3" : "mt-5"}>
       <h2
-        className={`text-[11px] font-bold uppercase tracking-[0.22em] pb-1 mb-2 border-b ${t.sectionTitle} ${
-          t.centered ? "text-center" : ""
+        className={`flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.24em] pb-1.5 mb-2.5 border-b ${t.sectionTitle} ${
+          t.centered ? "justify-center" : ""
         }`}
       >
+        <span aria-hidden className="inline-block h-[6px] w-[6px] rotate-45 bg-crimson shrink-0" />
         {title}
       </h2>
       {children}
@@ -359,7 +360,10 @@ function LebenslaufSheet({
 function LlSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-5 first:mt-0">
-      <h2 className="mb-3 text-[12px] font-bold uppercase tracking-[0.2em] text-[#1c1e21]">{title}</h2>
+      <h2 className="mb-3 flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.2em] text-[#1c1e21]">
+        <span aria-hidden className="inline-block h-[6px] w-[6px] rotate-45 bg-crimson shrink-0" />
+        {title}
+      </h2>
       {children}
     </section>
   );
