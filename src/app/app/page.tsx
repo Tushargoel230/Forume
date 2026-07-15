@@ -741,7 +741,7 @@ function InterviewPrompt() {
             onClick={() => { remember(); setState("yes"); }}
             className="rounded-md border border-pine px-3 py-1 text-xs font-semibold text-pine hover:bg-pine hover:text-paper transition-colors"
           >
-            Yes! 🎉
+            Yes, I did
           </button>
           <button
             onClick={() => { remember(); send("Not yet"); setState("done"); }}
