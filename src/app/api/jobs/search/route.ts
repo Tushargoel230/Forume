@@ -10,6 +10,15 @@ export const maxDuration = 300;
 
 type Doc = { name?: string; content?: string };
 
+/** Premium = email is on the PREMIUM_EMAILS allowlist (comma-separated, server
+    env). Empty/unset → nobody is premium, so paid sources (Apify) stay off. */
+function isPremium(email: string | null): boolean {
+  if (!email) return false;
+  const allow = (process.env.PREMIUM_EMAILS ?? "")
+    .split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return allow.includes(email.trim().toLowerCase());
+}
+
 function readScope(raw: unknown): SearchScope {
   const s = (raw ?? {}) as Record<string, unknown>;
   const str = (v: unknown, d: string) => (typeof v === "string" && v.trim() ? v : d);
@@ -76,6 +85,7 @@ export async function POST(request: Request) {
 
   // --- resolve the user + their background text ---------------------------
   let userId: string | null = null;
+  let userEmail: string | null = null;
   let backgroundText = "";
 
   if (isDemo) {
@@ -94,6 +104,7 @@ export async function POST(request: Request) {
     const { data: u, error } = await asUser.auth.getUser(token);
     if (error || !u.user) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
     userId = u.user.id;
+    userEmail = u.user.email ?? null;
     if (!(await withinDailyLimit(`jobs:user:${userId}`, USER_DAILY_LIMIT))) {
       return NextResponse.json({ error: "You've hit today's search limit — try again tomorrow." }, { status: 429 });
     }
@@ -101,9 +112,10 @@ export async function POST(request: Request) {
     backgroundText = (docs ?? []).map((d) => (d as Doc).content ?? "").filter(Boolean).join("\n\n");
   }
 
-  // Paid sources (Apify) are reserved for signed-in on-demand searches so
-  // anonymous/demo traffic can't drain the small Apify budget.
-  const includePaid = !isDemo;
+  // Paid sources (Apify) are reserved for PREMIUM members — an allowlist in
+  // PREMIUM_EMAILS. Empty allowlist = nobody premium = Apify never spends,
+  // so the free sources power everyone until paid tiers exist.
+  const includePaid = isPremium(userEmail);
 
   if (!backgroundText.trim()) {
     // no resume on file yet → tell the UI to show the first-run empty state

@@ -47,10 +47,12 @@ export const adzuna: JobProvider = {
       app_key: key,
       results_per_page: String(Math.min(limit, 50)),
       max_days_old: String(daysForDate(scope.datePosted)),
+      // relevance when there's a query (better matches first), recency otherwise
+      sort_by: scope.keywords.trim() ? "relevance" : "date",
       content_type: "application/json",
     });
     if (scope.keywords.trim()) params.set("what", scope.keywords.trim());
-    if (scope.remote === "remote") params.set("what_or", `${scope.keywords} remote`.trim());
+    if (scope.remote === "remote") params.set("what_or", "remote");
 
     try {
       const data = await getJson<AzResponse>(

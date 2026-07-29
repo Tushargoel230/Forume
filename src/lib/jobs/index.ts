@@ -7,13 +7,23 @@ import type { JobProvider, RawJobPosting, SearchScope } from "./types";
 import { isTooOld, matchesCountry, matchesRemote } from "./scope";
 import { isTopCompany } from "./companies";
 import { apify } from "./providers/apify";
+import { jsearch } from "./providers/jsearch";
 import { adzuna } from "./providers/adzuna";
+import { themuse } from "./providers/themuse";
 import { arbeitnow } from "./providers/arbeitnow";
 import { remotive } from "./providers/remotive";
 
-// Priority order: paid ATS first (if funded), then the free country source,
-// then the zero-auth feeds. Dedup keeps the earliest (highest-priority) hit.
-const PROVIDERS: JobProvider[] = [apify, adzuna, arbeitnow, remotive];
+// Priority order (dedup keeps the earliest/highest-priority hit):
+//   apify   — premium, direct-from-ATS (gated behind includePaid)
+//   jsearch — best free quality (Google for Jobs), needs a free key
+//   adzuna  — free keyword+country search
+//   themuse — free, real companies (category-based)
+//   arbeitnow / remotive — zero-auth supplements
+const PROVIDERS: JobProvider[] = [apify, jsearch, adzuna, themuse, arbeitnow, remotive];
+
+// Sources with NO server-side keyword search → apply a local keyword filter so
+// their results stay on-topic for the query.
+const LOCAL_KEYWORD_FILTER = new Set(["arbeitnow", "themuse"]);
 
 export type FetchMode = "live" | "background";
 
@@ -78,9 +88,9 @@ export async function fetchJobs(
       // organizationSearch; apply it locally to the free feeds so the toggle
       // is consistent across every source.
       if (scope.topCompaniesOnly && j.source !== "apify" && !isTopCompany(j.company)) continue;
-      // Feeds with no server-side keyword filter (Arbeitnow): require a loose
-      // keyword hit so results stay relevant to the query.
-      if (kwTokens.length && j.source === "arbeitnow") {
+      // Feeds with no server-side keyword filter: require a loose keyword hit
+      // so results stay relevant to the query.
+      if (kwTokens.length && LOCAL_KEYWORD_FILTER.has(j.source)) {
         const hay = `${j.title} ${j.description}`.toLowerCase();
         if (!kwTokens.some((t) => hay.includes(t))) continue;
       }
