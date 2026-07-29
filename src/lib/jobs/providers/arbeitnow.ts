@@ -25,8 +25,8 @@ export const arbeitnow: JobProvider = {
 
   async fetchJobs(_scope: SearchScope, limit: number): Promise<RawJobPosting[]> {
     const out: RawJobPosting[] = [];
-    // Each page returns ~100 rows; one page is plenty for a match run.
-    const pages = Math.min(2, Math.ceil(limit / 100) || 1);
+    // Each page returns ~100 rows; one page is plenty and keeps latency low.
+    const pages = 1;
     for (let page = 1; page <= pages; page++) {
       try {
         const data = await getJson<AnResponse>(

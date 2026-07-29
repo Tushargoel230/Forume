@@ -125,7 +125,11 @@ export async function POST(request: Request) {
   // --- run the match -------------------------------------------------------
   let jobs: ScoredJob[];
   try {
-    jobs = await runSearch(backgroundText, scope, { mode: "live", refineTop: 6, includePaid });
+    // refineTop 0: no LLM pass on the live path — the deterministic band/score
+    // is instant and honest. (The sequential Groq refine could blow the ~60s
+    // function limit and surface as a client "Failed to fetch".) The background
+    // cron still refines, where no user is waiting.
+    jobs = await runSearch(backgroundText, scope, { mode: "live", refineTop: 0, includePaid });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Search failed." },

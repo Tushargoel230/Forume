@@ -41,7 +41,7 @@ export const themuse: JobProvider = {
 
   async fetchJobs(scope: SearchScope, limit: number): Promise<RawJobPosting[]> {
     const categories = categoriesFor(scope.keywords);
-    const pages = Math.min(2, Math.ceil(limit / 20) || 1);
+    const pages = 1; // one page keeps latency low; ranking surfaces the best
     const catParam = categories.map((c) => `category=${encodeURIComponent(c)}`).join("&");
     const out: RawJobPosting[] = [];
 

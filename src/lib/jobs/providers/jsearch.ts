@@ -51,19 +51,22 @@ export const jsearch: JobProvider = {
     if (scope.country !== "any" && scope.country !== "remote") parts.push(`in ${countryLabel(scope.country)}`);
     if (scope.remote === "remote") parts.push("remote");
     const query = parts.join(" ");
-    const numPages = Math.min(2, Math.ceil(limit / 10) || 1);
-
+    // One page (~10 results) keeps latency low and conserves the free monthly
+    // request quota (num_pages multiplies request cost).
     const params = new URLSearchParams({
       query,
       page: "1",
-      num_pages: String(numPages),
+      num_pages: "1",
       date_posted: datePosted(scope.datePosted),
     });
     if (scope.remote === "remote") params.set("remote_jobs_only", "true");
 
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 9000);
     try {
       const res = await fetch(`https://jsearch.p.rapidapi.com/search?${params}`, {
         headers: { "X-RapidAPI-Key": k, "X-RapidAPI-Host": "jsearch.p.rapidapi.com" },
+        signal: ctrl.signal,
       });
       if (!res.ok) return []; // quota spent / error → fall back to other sources
       const data = (await res.json()) as JsResponse;
@@ -82,6 +85,8 @@ export const jsearch: JobProvider = {
       }));
     } catch {
       return [];
+    } finally {
+      clearTimeout(t);
     }
   },
 };
