@@ -20,6 +20,7 @@ function readScope(raw: unknown): SearchScope {
       ? s.remote : DEFAULT_SCOPE.remote) as SearchScope["remote"],
     datePosted: (["24h", "7d", "30d"].includes(s.datePosted as string)
       ? s.datePosted : DEFAULT_SCOPE.datePosted) as SearchScope["datePosted"],
+    topCompaniesOnly: Boolean(s.topCompaniesOnly),
   };
 }
 
@@ -100,15 +101,19 @@ export async function POST(request: Request) {
     backgroundText = (docs ?? []).map((d) => (d as Doc).content ?? "").filter(Boolean).join("\n\n");
   }
 
+  // Paid sources (Apify) are reserved for signed-in on-demand searches so
+  // anonymous/demo traffic can't drain the small Apify budget.
+  const includePaid = !isDemo;
+
   if (!backgroundText.trim()) {
     // no resume on file yet → tell the UI to show the first-run empty state
-    return NextResponse.json({ jobs: [], needsResume: true, sources: activeSources("live") });
+    return NextResponse.json({ jobs: [], needsResume: true, sources: activeSources("live", includePaid) });
   }
 
   // --- run the match -------------------------------------------------------
   let jobs: ScoredJob[];
   try {
-    jobs = await runSearch(backgroundText, scope, { mode: "live", refineTop: 6 });
+    jobs = await runSearch(backgroundText, scope, { mode: "live", refineTop: 6, includePaid });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Search failed." },
@@ -128,7 +133,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     jobs,
     needsResume: false,
-    sources: activeSources("live"),
+    sources: activeSources("live", includePaid),
     checkedAt: new Date().toISOString(),
   });
 }

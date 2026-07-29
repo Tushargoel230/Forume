@@ -5,6 +5,7 @@
 
 import type { JobProvider, RawJobPosting, SearchScope } from "./types";
 import { isTooOld, matchesCountry, matchesRemote } from "./scope";
+import { isTopCompany } from "./companies";
 import { apify } from "./providers/apify";
 import { adzuna } from "./providers/adzuna";
 import { arbeitnow } from "./providers/arbeitnow";
@@ -22,13 +23,22 @@ export type FetchOptions = {
   mode?: FetchMode;
   /** Per-provider result cap — bounds cost/latency. */
   perProvider?: number;
+  /** Allow paid sources (Apify). Off by default so anonymous traffic and the
+      background cron never spend the budget — set true only for signed-in
+      on-demand searches. */
+  includePaid?: boolean;
 };
 
+function usable(p: JobProvider, mode: FetchMode, includePaid: boolean): boolean {
+  if (!p.isConfigured()) return false;
+  if (p.scarce && mode !== "background") return false;
+  if (p.paid && !includePaid) return false;
+  return true;
+}
+
 /** Which sources are actually usable right now (for the "sources live" UI label). */
-export function activeSources(mode: FetchMode = "live"): string[] {
-  return PROVIDERS.filter((p) => p.isConfigured() && (mode === "background" || !p.scarce)).map(
-    (p) => p.name,
-  );
+export function activeSources(mode: FetchMode = "live", includePaid = false): string[] {
+  return PROVIDERS.filter((p) => usable(p, mode, includePaid)).map((p) => p.name);
 }
 
 function dedupeKey(j: RawJobPosting): string {
@@ -45,10 +55,9 @@ export async function fetchJobs(
 ): Promise<RawJobPosting[]> {
   const mode = opts.mode ?? "live";
   const perProvider = opts.perProvider ?? 60;
+  const includePaid = opts.includePaid ?? false;
 
-  const chosen = PROVIDERS.filter(
-    (p) => p.isConfigured() && (mode === "background" || !p.scarce),
-  );
+  const chosen = PROVIDERS.filter((p) => usable(p, mode, includePaid));
 
   const settled = await Promise.allSettled(
     chosen.map((p) => p.fetchJobs(scope, perProvider)),
@@ -65,6 +74,10 @@ export async function fetchJobs(
       if (isTooOld(j.postedAt, scope.datePosted)) continue;
       if (!matchesRemote(j.remote, scope.remote)) continue;
       if (!matchesCountry(j.country, j.location, scope.country)) continue;
+      // "Top companies" filter: Apify enforces this server-side via
+      // organizationSearch; apply it locally to the free feeds so the toggle
+      // is consistent across every source.
+      if (scope.topCompaniesOnly && j.source !== "apify" && !isTopCompany(j.company)) continue;
       // Feeds with no server-side keyword filter (Arbeitnow): require a loose
       // keyword hit so results stay relevant to the query.
       if (kwTokens.length && j.source === "arbeitnow") {

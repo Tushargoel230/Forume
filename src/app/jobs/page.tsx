@@ -259,6 +259,16 @@ function SpecSheet({
             ))}
           </div>
         </div>
+        <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={scope.topCompaniesOnly ?? false}
+            onChange={(e) => setScope({ ...scope, topCompaniesOnly: e.target.checked })}
+            className="h-4 w-4 accent-crimson"
+          />
+          <span className="font-medium">Top companies only</span>
+          <span className="hidden text-xs text-stone sm:inline">NVIDIA, Apple, Google…</span>
+        </label>
         <button
           onClick={onSearch}
           disabled={busy}
@@ -279,7 +289,14 @@ function JobCard({ job, onGenerate }: { job: ScoredJob; onGenerate: () => void }
     <div className="cropmarks flex h-full flex-col rounded-sm border border-rule bg-paper p-5">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <p className="truncate text-xs uppercase tracking-wider text-stone">{job.company || "—"}</p>
+          <div className="flex items-center gap-2">
+            <p className="truncate text-xs uppercase tracking-wider text-stone">{job.company || "—"}</p>
+            {job.isTopCompany && (
+              <span className="shrink-0 rounded-sm border border-gold px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-gold">
+                Top
+              </span>
+            )}
+          </div>
           <h3 className="mt-0.5 font-display text-lg leading-snug text-ink">{job.title}</h3>
         </div>
         <span className={`stamp shrink-0 border ${meta.cls} bg-paper text-center text-sm`}>

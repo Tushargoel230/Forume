@@ -15,6 +15,8 @@ export type SearchScope = {
   country: string;
   remote: RemotePref;
   datePosted: DatePosted;
+  /** Restrict results to recognized top-tier employers (TOP_COMPANIES). */
+  topCompaniesOnly?: boolean;
 };
 
 export const DEFAULT_SCOPE: SearchScope = {
@@ -22,6 +24,7 @@ export const DEFAULT_SCOPE: SearchScope = {
   country: "any",
   remote: "any",
   datePosted: "7d",
+  topCompaniesOnly: false,
 };
 
 /** One posting, normalized across every provider. */
@@ -41,11 +44,12 @@ export type RawJobPosting = {
 
 /** A posting after matching against the user's background. */
 export type ScoredJob = RawJobPosting & {
-  score: number; // 0–100 deterministic keyword overlap
+  score: number; // 0–100 deterministic keyword overlap (honest resume fit)
   fit: Fit | null; // five-band verdict (LLM-refined for the top matches)
   matched: string[];
   missing: string[];
   isNew?: boolean;
+  isTopCompany?: boolean; // recognized top-tier employer (surfaced higher + badged)
 };
 
 /** Every provider implements this. `live` calls hit the network on demand;
@@ -57,5 +61,8 @@ export type JobProvider = {
   isConfigured(): boolean;
   /** Scarce = tiny daily quota (e.g. Remotive asks for ≤4 calls/day globally). */
   scarce?: boolean;
+  /** Paid = costs money per result (Apify). Only used when includePaid is set,
+      so anonymous traffic and the background cron can't drain a small budget. */
+  paid?: boolean;
   fetchJobs(scope: SearchScope, limit: number): Promise<RawJobPosting[]>;
 };

@@ -11,9 +11,15 @@
 
 import type { JobProvider, RawJobPosting, RemotePref, SearchScope } from "../types";
 import { countryLabel } from "../scope";
+import { TOP_COMPANY_NAMES } from "../companies";
 import { stripHtml } from "../util";
 
 const ACTOR = "fantastic-jobs~career-site-job-listing-api";
+
+// Per-run result cap. Apify bills per result (~$0.012/job), so this bounds the
+// cost of a single search. Small on purpose to stretch the $5/mo free credits
+// (~$0.30/search here); raise JOBS_APIFY_MAX only if you accept more spend.
+const MAX_ITEMS = Number(process.env.JOBS_APIFY_MAX) || 25;
 
 function token() { return process.env.APIFY_TOKEN?.trim(); }
 
@@ -28,14 +34,17 @@ function workArrangement(pref: RemotePref): string[] | undefined {
 export const apify: JobProvider = {
   name: "apify",
   isConfigured: () => Boolean(token()),
+  paid: true, // pay-per-result — gated behind includePaid (signed-in on-demand only)
 
   async fetchJobs(scope: SearchScope, limit: number): Promise<RawJobPosting[]> {
     const tk = token();
     if (!tk) return [];
 
     const input: Record<string, unknown> = {
-      limit: Math.max(10, Math.min(limit, 100)), // hard cap: cost is per-result
+      limit: Math.max(10, Math.min(limit, MAX_ITEMS)), // hard cap: cost is per-result
       descriptionType: "text",
+      removeAgency: true, // drop recruitment-agency reposts — big quality win
+      includeCompanyDetails: true, // LinkedIn/company data (logo etc.)
     };
     if (scope.datePosted === "30d") {
       const since = new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10);
@@ -47,6 +56,8 @@ export const apify: JobProvider = {
     if (scope.country !== "any" && scope.country !== "remote") {
       input.locationSearch = [countryLabel(scope.country)];
     }
+    // "Top companies" filter → restrict to recognized big employers (org search).
+    if (scope.topCompaniesOnly) input.organizationSearch = TOP_COMPANY_NAMES;
     const wa = workArrangement(scope.remote);
     if (wa) input.aiWorkArrangementFilter = wa;
 
