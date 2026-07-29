@@ -100,6 +100,7 @@ export default function Landing() {
             <a href="#how" className="transition-colors hover:text-ink">How</a>
             <a href="#templates" className="transition-colors hover:text-ink">Templates</a>
             <a href="#access" className="transition-colors hover:text-ink">Access</a>
+            <Link href="/jobs" className="font-medium text-crimson transition-colors hover:text-ink">Job Match</Link>
           </div>
           <Link
             href="/app"

@@ -1,0 +1,22 @@
+name: Job Match refresh
+
+# Continuous background search: re-runs each signed-in user's saved scope through
+# the job providers, stores new/changed postings, marks them new-since-last-visit.
+# Uses GitHub Actions (like the ops-agents workflow) rather than Vercel Cron —
+# Vercel Hobby can't run sub-daily crons, and this keeps one scheduler for the repo.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours (also fits Remotive's ≤4 calls/day budget)
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger job refresh
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.FORUME_APP_URL }}/api/jobs/refresh" \
+            -H "Content-Type: application/json" \
+            -H "x-agent-secret: ${{ secrets.AGENT_CRON_SECRET }}" \
+            -d '{}'

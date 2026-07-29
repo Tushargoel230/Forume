@@ -69,8 +69,10 @@ const NUM_WORDS: Record<string, string> = {
   six: "6", seven: "7", eight: "8", nine: "9", ten: "10",
 };
 
-/** Lowercase, turn any non-alphanumeric run into a single space, trim. */
-function normalize(s: string): string {
+/** Lowercase, turn any non-alphanumeric run into a single space, trim.
+    Exported so the job-matching layer (lib/match.ts) reuses the exact same
+    normalization/synonym logic instead of duplicating it. */
+export function normalize(s: string): string {
   let out = s.toLowerCase().replace(/[^a-z0-9+#]+/g, " ");
   // fold small number-words to digits so "five years" ~ "5 years"
   out = out.replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten)\b/g, (m) => NUM_WORDS[m]);
@@ -78,7 +80,7 @@ function normalize(s: string): string {
 }
 
 /** All accepted surface forms for a keyword (itself + any synonym group it hits). */
-function variantsFor(keyword: string): string[] {
+export function variantsFor(keyword: string): string[] {
   const norm = normalize(keyword).trim();
   const set = new Set<string>([norm]);
   for (const group of SYNONYM_GROUPS) {
@@ -89,7 +91,7 @@ function variantsFor(keyword: string): string[] {
 }
 
 /** True if any variant of the keyword appears as a whole word/phrase in text. */
-function keywordPresent(normalizedText: string, keyword: string): boolean {
+export function keywordPresent(normalizedText: string, keyword: string): boolean {
   for (const v of variantsFor(keyword)) {
     if (normalizedText.includes(` ${v} `)) return true;
   }

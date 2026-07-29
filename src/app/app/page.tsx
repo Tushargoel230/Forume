@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import type { Session } from "@supabase/supabase-js";
@@ -132,6 +132,13 @@ export default function Dashboard() {
               <span className="mt-0.5 block text-xs text-stone">{hint}</span>
             </button>
           ))}
+          <Link
+            href="/jobs"
+            className="block w-full border-l-2 border-transparent px-4 py-3 text-left transition-colors hover:border-rule-dark"
+          >
+            <span className="block text-xs font-bold uppercase tracking-[0.18em] text-crimson">Job Match</span>
+            <span className="mt-0.5 block text-xs text-stone">Live jobs, scored to you</span>
+          </Link>
         </nav>
         <div className="border-t border-rule px-6 py-5">
           {isDemo ? (
@@ -178,6 +185,12 @@ export default function Dashboard() {
               {label}
             </button>
           ))}
+          <Link
+            href="/jobs"
+            className="flex-1 border-b-2 border-transparent px-2 py-2.5 text-center text-xs font-bold uppercase tracking-[0.14em] text-crimson transition-colors"
+          >
+            Jobs
+          </Link>
         </nav>
       </header>
 
@@ -236,10 +249,24 @@ export function setOpenedApplication(a: Application) {
 }
 
 function NewApplication({ session }: { session: Session | DemoSession }) {
+  // a "Tailor my resume" click on /jobs stashes the chosen posting here, so the
+  // whole existing generate pipeline runs on it exactly like a pasted JD
+  const prefillRef = useRef<{ jd?: string; company?: string; role?: string } | null>(null);
+  const prefillReadRef = useRef(false);
+  if (!prefillReadRef.current) {
+    prefillReadRef.current = true;
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.sessionStorage.getItem("forume-jobmatch-prefill");
+        if (raw) prefillRef.current = JSON.parse(raw);
+      } catch {}
+    }
+  }
+
   // when opened from the archive, restore the whole application — JD included
-  const [jd, setJd] = useState(openedApplication?.jd ?? "");
-  const [company, setCompany] = useState(openedApplication?.company ?? "");
-  const [role, setRole] = useState(openedApplication?.role ?? "");
+  const [jd, setJd] = useState(openedApplication?.jd ?? prefillRef.current?.jd ?? "");
+  const [company, setCompany] = useState(openedApplication?.company ?? prefillRef.current?.company ?? "");
+  const [role, setRole] = useState(openedApplication?.role ?? prefillRef.current?.role ?? "");
   const [template, setTemplate] = useState(openedApplication?.template ?? "slate");
   const [busy, setBusy] = useState(false);
   const [fixing, setFixing] = useState(false);
@@ -256,6 +283,8 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
 
   useEffect(() => {
     openedApplication = null;
+    // consume the one-shot Job Match prefill so a later refresh won't reuse it
+    if (typeof window !== "undefined") window.sessionStorage.removeItem("forume-jobmatch-prefill");
     const demoSession = getDemoSession();
     if (demoSession && session.access_token.startsWith("demo-")) {
       const stored = typeof window !== "undefined" ? window.localStorage.getItem("forume-demo-contact") : null;
