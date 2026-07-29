@@ -36,20 +36,31 @@ export async function runSearch(
 ): Promise<ScoredJob[]> {
   const refineTop = opts.refineTop ?? 6;
   const jobs = await fetchJobs(scope, opts);
+  const hasQuery = scope.keywords.trim().length > 0;
 
   // 1. deterministic pass — honest resume-fit score + a composite rank
   const ranked = jobs.map((j) => {
     const { score, matched, missing } = overlapScore(backgroundText, j.description || j.title);
     const top = isTopCompany(j.company);
+    const tBoost = titleBoost(j.title, scope.keywords);
+    // relevance = the role actually matches the query (title hit or résumé overlap)
+    const relevant = tBoost > 0 || score > 0;
     const scored: ScoredJob = {
       ...j, score, matched, missing, isTopCompany: top,
       fit: { level: bandFromScore(score), reasons: [] },
     };
-    const rank = score + (top ? 18 : 0) + titleBoost(j.title, scope.keywords);
-    return { scored, rank };
+    // big-company boost ONLY when the role is relevant, so a prestigious but
+    // off-topic posting (e.g. a "Market Manager" for a software search) can't
+    // float to the top on brand alone.
+    const rank = score + tBoost + (top && relevant ? 15 : 0);
+    return { scored, rank, relevant };
   });
-  ranked.sort((a, b) => b.rank - a.rank);
-  const result = ranked.map((r) => r.scored);
+  // when the user typed a query, drop pure-noise (no title hit, no overlap);
+  // fall back to everything if that would empty the list.
+  let list = hasQuery ? ranked.filter((r) => r.relevant) : ranked;
+  if (list.length === 0) list = ranked;
+  list.sort((a, b) => b.rank - a.rank);
+  const result = list.map((r) => r.scored);
 
   // 2. optional LLM refinement — top N of the ranked order only, sequential to
   //    stay inside the per-minute rate limit; falls back to the band on failure.

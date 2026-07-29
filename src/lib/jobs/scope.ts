@@ -60,12 +60,34 @@ export function matchesRemote(remote: boolean | null, pref: RemotePref): boolean
   return true; // "hybrid" isn't reliably distinguishable in free feeds → don't over-filter
 }
 
-/** Does a posting's country/location match the chosen country? */
+/** Country name variants, matched as whole words. Fixes false positives from
+    naive substring matching (e.g. code "us" appearing inside "aUStralia"). */
+const COUNTRY_ALIASES: Record<string, string[]> = {
+  de: ["germany", "deutschland"],
+  gb: ["united kingdom", "uk", "england", "scotland", "wales", "great britain", "britain"],
+  us: ["united states", "usa"],
+  nl: ["netherlands", "holland"],
+  fr: ["france"],
+  ch: ["switzerland", "suisse", "schweiz"],
+  at: ["austria", "osterreich"],
+  ca: ["canada"],
+  au: ["australia"],
+  in: ["india"],
+  es: ["spain", "espana"],
+  it: ["italy", "italia"],
+  pl: ["poland", "polska"],
+  se: ["sweden", "sverige"],
+  sg: ["singapore"],
+};
+
+/** Does a posting's country/location match the chosen country? Whole-word match
+    on the country name/aliases + the ISO code (padded), so substrings like the
+    "us" in "Australia" can't produce a false hit. */
 export function matchesCountry(country: string, location: string, code: string): boolean {
   if (code === "any" || code === "remote") return true;
-  const hay = `${country} ${location}`.toLowerCase();
-  const label = countryLabel(code).toLowerCase();
-  return hay.includes(code.toLowerCase()) || hay.includes(label);
+  const hay = ` ${`${country} ${location}`.toLowerCase().replace(/[^a-z ]+/g, " ").replace(/\s+/g, " ").trim()} `;
+  const terms = [...(COUNTRY_ALIASES[code] ?? [countryLabel(code).toLowerCase()]), code.toLowerCase()];
+  return terms.some((t) => hay.includes(` ${t} `));
 }
 
 /** A compact human summary of the scope for freshness/source labels. */
