@@ -58,6 +58,7 @@ export const adzuna: JobProvider = {
       const data = await getJson<AzResponse>(
         `https://api.adzuna.com/v1/api/jobs/${country}/search/1?${params}`,
       );
+      console.log(`[adzuna] country=${country} what="${scope.keywords}" returned ${(data.results ?? []).length}`);
       return (data.results ?? []).map((j) => ({
         source: "adzuna",
         sourceJobId: j.id,
@@ -71,7 +72,8 @@ export const adzuna: JobProvider = {
         salary: salaryText(j),
         remote: /remote/i.test(`${j.title} ${j.location?.display_name ?? ""}`) || null,
       }));
-    } catch {
+    } catch (e) {
+      console.log(`[adzuna] error country=${country}: ${String(e).slice(0, 160)}`);
       return [];
     }
   },

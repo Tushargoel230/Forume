@@ -68,8 +68,12 @@ export const jsearch: JobProvider = {
         headers: { "X-RapidAPI-Key": k, "X-RapidAPI-Host": "jsearch.p.rapidapi.com" },
         signal: ctrl.signal,
       });
-      if (!res.ok) return []; // quota spent / error → fall back to other sources
+      if (!res.ok) {
+        console.log(`[jsearch] HTTP ${res.status}: ${(await res.text()).slice(0, 160)}`);
+        return []; // quota spent / error → fall back to other sources
+      }
       const data = (await res.json()) as JsResponse;
+      console.log(`[jsearch] query="${query}" returned ${(data.data ?? []).length}`);
       return (data.data ?? []).map((j) => ({
         source: "jsearch",
         sourceJobId: j.job_id,
@@ -83,7 +87,8 @@ export const jsearch: JobProvider = {
         salary: salaryText(j),
         remote: typeof j.job_is_remote === "boolean" ? j.job_is_remote : null,
       }));
-    } catch {
+    } catch (e) {
+      console.log(`[jsearch] error: ${String(e).slice(0, 160)}`);
       return [];
     } finally {
       clearTimeout(t);
