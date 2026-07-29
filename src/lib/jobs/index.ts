@@ -25,6 +25,13 @@ const PROVIDERS: JobProvider[] = [apify, jsearch, adzuna, themuse, arbeitnow, re
 // their results stay on-topic for the query.
 const LOCAL_KEYWORD_FILTER = new Set(["arbeitnow", "themuse"]);
 
+// Sources that ALREADY filter by country server-side (Adzuna per-country
+// endpoint, JSearch "in <country>" query, Apify locationSearch). Re-applying a
+// strict location-string match to these wrongly drops valid jobs whose location
+// text doesn't literally contain the country name (e.g. Adzuna returns a state),
+// so we trust their server-side country scoping instead.
+const COUNTRY_FILTERED = new Set(["adzuna", "jsearch", "apify"]);
+
 export type FetchMode = "live" | "background";
 
 export type FetchOptions = {
@@ -76,14 +83,18 @@ export async function fetchJobs(
   const seen = new Set<string>();
   const out: RawJobPosting[] = [];
   const kwTokens = scope.keywords.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
+  const fetched: Record<string, number> = {};
+  const kept: Record<string, number> = {};
 
   for (const r of settled) {
     if (r.status !== "fulfilled") continue;
     for (const j of r.value) {
+      fetched[j.source] = (fetched[j.source] ?? 0) + 1;
       if (!j.title || !j.url) continue;
       if (isTooOld(j.postedAt, scope.datePosted)) continue;
       if (!matchesRemote(j.remote, scope.remote)) continue;
-      if (!matchesCountry(j.country, j.location, scope.country)) continue;
+      // Only re-check country for sources that DON'T scope by country server-side.
+      if (!COUNTRY_FILTERED.has(j.source) && !matchesCountry(j.country, j.location, scope.country)) continue;
       // "Top companies" filter: Apify enforces this server-side via
       // organizationSearch; apply it locally to the free feeds so the toggle
       // is consistent across every source.
@@ -97,8 +108,15 @@ export async function fetchJobs(
       const key = dedupeKey(j);
       if (seen.has(key)) continue;
       seen.add(key);
+      kept[j.source] = (kept[j.source] ?? 0) + 1;
       out.push(j);
     }
   }
+  // diagnostic (Vercel runtime logs) — shows exactly where results are lost
+  console.log(
+    `[jobmatch] country=${scope.country} remote=${scope.remote} date=${scope.datePosted} ` +
+    `top=${scope.topCompaniesOnly ?? false} kw="${scope.keywords}" ` +
+    `fetched=${JSON.stringify(fetched)} kept=${JSON.stringify(kept)} total=${out.length}`,
+  );
   return out;
 }

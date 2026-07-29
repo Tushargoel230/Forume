@@ -55,8 +55,10 @@ export function isTooOld(postedAt: string | null, date: DatePosted): boolean {
     kept for "any" but excluded from a strict remote/onsite filter. */
 export function matchesRemote(remote: boolean | null, pref: RemotePref): boolean {
   if (pref === "any") return true;
-  if (pref === "remote") return remote === true;
-  if (pref === "onsite") return remote === false;
+  // Unknown (null) passes both remote and onsite — many free feeds don't set the
+  // flag, and dropping unknowns is a common cause of empty result sets.
+  if (pref === "remote") return remote !== false;
+  if (pref === "onsite") return remote !== true;
   return true; // "hybrid" isn't reliably distinguishable in free feeds → don't over-filter
 }
 
