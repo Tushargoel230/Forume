@@ -104,27 +104,26 @@ export default function JobsPage() {
     [],
   );
 
-  /* ---- first load: cached matches for signed-in, else auto first search ---- */
+  /* ---- first load: show last saved results only (signed-in). Never auto-search
+     — a fresh search is slow (live sources + engine), so it runs only when the
+     user hits Search / Refresh. ---- */
   useEffect(() => {
     if (!ready || !session || didInit.current) return;
     didInit.current = true;
+    if (isDemo(session)) return; // demo keeps no server state — wait for the user
     (async () => {
-      if (!isDemo(session)) {
-        try {
-          const res = await fetch("/api/jobs/search", { headers: { Authorization: `Bearer ${session.access_token}` } });
-          const data = await res.json();
-          if (data.scope) setScope((sc) => ({ ...sc, ...data.scope }));
-          if ((data.jobs ?? []).length) {
-            setJobs(data.jobs);
-            setCheckedAt(data.lastRunAt);
-            setStarted(true);
-            return; // show cached; user can Refresh for fresh
-          }
-        } catch {}
-      }
-      void runSearch(isDemo(session) ? DEFAULT_SCOPE : scope, session);
+      try {
+        const res = await fetch("/api/jobs/search", { headers: { Authorization: `Bearer ${session.access_token}` } });
+        const data = await res.json();
+        if (data.scope) setScope((sc) => ({ ...sc, ...data.scope }));
+        if ((data.jobs ?? []).length) {
+          setJobs(data.jobs);
+          setCheckedAt(data.lastRunAt);
+          setStarted(true); // showing cached results; Refresh re-runs live
+        }
+      } catch {}
     })();
-  }, [ready, session, scope, runSearch]);
+  }, [ready, session]);
 
   if (!ready || !session) {
     return <main className="min-h-screen grid place-items-center text-stone">Loading…</main>;
@@ -152,7 +151,7 @@ export default function JobsPage() {
           </p>
         </div>
 
-        <SpecSheet scope={scope} setScope={setScope} busy={busy} onSearch={() => runSearch(scope, session)} />
+        <SpecSheet scope={scope} setScope={setScope} busy={busy} started={started} onSearch={() => runSearch(scope, session)} />
 
         {/* freshness + sources */}
         {started && !needsResume && (
@@ -174,6 +173,8 @@ export default function JobsPage() {
           <EmptyResume />
         ) : busy && jobs.length === 0 ? (
           <LoadingGrid />
+        ) : !started && jobs.length === 0 && !busy ? (
+          <IdlePrompt onSearch={() => runSearch(scope, session)} />
         ) : jobs.length === 0 && started && !busy ? (
           <NoResults />
         ) : (
@@ -201,11 +202,12 @@ export default function JobsPage() {
 /* ---------------- filter bar (the "spec sheet") ---------------- */
 
 function SpecSheet({
-  scope, setScope, busy, onSearch,
+  scope, setScope, busy, started, onSearch,
 }: {
   scope: SearchScope;
   setScope: (s: SearchScope) => void;
   busy: boolean;
+  started: boolean;
   onSearch: () => void;
 }) {
   return (
@@ -262,7 +264,7 @@ function SpecSheet({
           disabled={busy}
           className="rounded-md bg-crimson px-6 py-3 font-semibold text-paper transition-colors hover:bg-ink disabled:opacity-50"
         >
-          {busy ? "Searching…" : "Refresh now"}
+          {busy ? "Searching…" : started ? "Refresh now" : "Search"}
         </button>
       </div>
     </div>
@@ -339,6 +341,24 @@ function EmptyResume() {
       >
         Add your resume →
       </Link>
+    </div>
+  );
+}
+
+function IdlePrompt({ onSearch }: { onSearch: () => void }) {
+  return (
+    <div className="mt-8 cropmarks rounded-sm border border-dashed border-rule-dark bg-paper p-12 text-center">
+      <p className="font-display text-2xl text-ink">Ready when you are</p>
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-stone">
+        Set your role, country, and how recent you want the postings above, then run
+        the search. Forume scores each result against your resume.
+      </p>
+      <button
+        onClick={onSearch}
+        className="mt-6 inline-block rounded-md bg-crimson px-6 py-3 font-semibold text-paper transition-colors hover:bg-ink"
+      >
+        Search jobs
+      </button>
     </div>
   );
 }
