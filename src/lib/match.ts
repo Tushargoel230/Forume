@@ -25,14 +25,24 @@ const STOPWORDS = new Set(
     "more most other than then also within per via etc us do does new join build " +
     "including include includes required requirements responsibilities preferred " +
     "nice must should would could like well good great high low using use used " +
-    "day days across company companies career opportunity opportunities apply")
+    "day days across company companies career opportunity opportunities apply " +
+    // job-posting boilerplate — pure noise that drags every score down
+    "benefits benefit compensation salary equal employer diversity inclusion inclusive " +
+    "applicants applicant hire hiring position positions candidates skills skill ability " +
+    "abilities knowledge understanding excellent responsible duties qualifications qualified " +
+    "degree bachelor master phd environment culture fast paced growth grow mission passion " +
+    "passionate seeking make impact difference people person team teams world class benefits " +
+    "flexible paid leave insurance health remote hybrid onsite office location offices " +
+    "communication collaborate collaboration collaborative stakeholders cross functional " +
+    "excellent proven track record self starter detail oriented problem solving fast learner " +
+    "responsibilities requirements preferred bonus perks vacation pto")
     .split(" "),
 );
 
 /** Pull the salient terms from a job description: the deterministic signal we
     score against. Keeps multi-word tech phrases (bigrams) and meaningful
     unigrams, ranked by frequency, capped so scoring stays cheap and stable. */
-export function extractJobKeywords(jobText: string, max = 24): string[] {
+export function extractJobKeywords(jobText: string, max = 18): string[] {
   const norm = normalize(jobText); // " padded lowercase alnum+#+ tokens "
   const tokens = norm.trim().split(" ").filter(Boolean);
   const freq = new Map<string, number>();
@@ -82,10 +92,13 @@ export function overlapScore(backgroundText: string, jobText: string): OverlapRe
 /** Map a raw 0–100 overlap to the five-band verdict, so even without the LLM
     pass every card shows an honest band (refined later for the top matches). */
 export function bandFromScore(score: number): FitLevel {
-  if (score >= 75) return "strong";
-  if (score >= 55) return "good";
-  if (score >= 40) return "fair";
-  if (score >= 25) return "stretch";
+  // Calibrated for keyword-overlap scores after boilerplate removal: a genuinely
+  // relevant role typically lands 30–60% overlap, so those read as fair/good,
+  // not "long shot". Only real matches clear 60.
+  if (score >= 60) return "strong";
+  if (score >= 45) return "good";
+  if (score >= 30) return "fair";
+  if (score >= 16) return "stretch";
   return "weak";
 }
 
