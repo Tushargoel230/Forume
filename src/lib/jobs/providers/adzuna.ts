@@ -49,7 +49,6 @@ export const adzuna: JobProvider = {
       max_days_old: String(daysForDate(scope.datePosted)),
       // relevance when there's a query (better matches first), recency otherwise
       sort_by: scope.keywords.trim() ? "relevance" : "date",
-      content_type: "application/json",
     });
     if (scope.keywords.trim()) params.set("what", scope.keywords.trim());
     if (scope.remote === "remote") params.set("what_or", "remote");

@@ -29,7 +29,7 @@ export async function getJson<T>(url: string, timeoutMs = 9000): Promise<T> {
       signal: ctrl.signal,
       headers: { Accept: "application/json", "User-Agent": "Forume-JobMatch/1.0" },
     });
-    if (!res.ok) throw new Error(`${res.status}`);
+    if (!res.ok) throw new Error(`${res.status} ${(await res.text()).slice(0, 160)}`);
     return (await res.json()) as T;
   } finally {
     clearTimeout(t);
