@@ -259,16 +259,6 @@ function SpecSheet({
             ))}
           </div>
         </div>
-        <label className="flex cursor-pointer select-none items-center gap-2 text-sm text-ink">
-          <input
-            type="checkbox"
-            checked={scope.topCompaniesOnly ?? false}
-            onChange={(e) => setScope({ ...scope, topCompaniesOnly: e.target.checked })}
-            className="h-4 w-4 accent-crimson"
-          />
-          <span className="font-medium">Top companies only</span>
-          <span className="hidden text-xs text-stone sm:inline">NVIDIA, Apple, Google…</span>
-        </label>
         <button
           onClick={onSearch}
           disabled={busy}

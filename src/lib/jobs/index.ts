@@ -5,7 +5,6 @@
 
 import type { JobProvider, RawJobPosting, SearchScope } from "./types";
 import { isTooOld, matchesCountry, matchesRemote } from "./scope";
-import { isTopCompany } from "./companies";
 import { apify } from "./providers/apify";
 import { jsearch } from "./providers/jsearch";
 import { adzuna } from "./providers/adzuna";
@@ -95,10 +94,6 @@ export async function fetchJobs(
       if (!matchesRemote(j.remote, scope.remote)) continue;
       // Only re-check country for sources that DON'T scope by country server-side.
       if (!COUNTRY_FILTERED.has(j.source) && !matchesCountry(j.country, j.location, scope.country)) continue;
-      // "Top companies" filter: Apify enforces this server-side via
-      // organizationSearch; apply it locally to the free feeds so the toggle
-      // is consistent across every source.
-      if (scope.topCompaniesOnly && j.source !== "apify" && !isTopCompany(j.company)) continue;
       // Feeds with no server-side keyword filter: require a loose keyword hit
       // so results stay relevant to the query.
       if (kwTokens.length && LOCAL_KEYWORD_FILTER.has(j.source)) {

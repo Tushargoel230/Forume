@@ -49,10 +49,11 @@ export async function runSearch(
       ...j, score, matched, missing, isTopCompany: top,
       fit: { level: bandFromScore(score), reasons: [] },
     };
-    // big-company boost ONLY when the role is relevant, so a prestigious but
-    // off-topic posting (e.g. a "Market Manager" for a software search) can't
-    // float to the top on brand alone.
-    const rank = score + tBoost + (top && relevant ? 15 : 0);
+    // Big-name companies get a strong lift so relevant roles at NVIDIA/Apple/
+    // Google-tier surface near the top — that's what makes people click through
+    // and apply. Gated on relevance so an off-topic prestige posting (e.g. a
+    // "Market Manager" for a software search) can't float up on brand alone.
+    const rank = score + tBoost + (top && relevant ? 30 : 0);
     return { scored, rank, relevant };
   });
   // when the user typed a query, drop pure-noise (no title hit, no overlap);
