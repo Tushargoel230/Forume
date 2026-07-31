@@ -48,8 +48,6 @@ export default function JobsPage() {
 
   const [scope, setScope] = useState<SearchScope>(DEFAULT_SCOPE);
   const [jobs, setJobs] = useState<ScoredJob[]>([]);
-  const [sources, setSources] = useState<string[]>([]);
-  const [checkedAt, setCheckedAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [needsResume, setNeedsResume] = useState(false);
@@ -93,8 +91,6 @@ export default function JobsPage() {
         if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
         setNeedsResume(Boolean(data.needsResume));
         setJobs(data.jobs ?? []);
-        setSources(data.sources ?? []);
-        setCheckedAt(data.checkedAt ?? new Date().toISOString());
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -118,7 +114,6 @@ export default function JobsPage() {
         if (data.scope) setScope((sc) => ({ ...sc, ...data.scope }));
         if ((data.jobs ?? []).length) {
           setJobs(data.jobs);
-          setCheckedAt(data.lastRunAt);
           setStarted(true); // showing cached results; Refresh re-runs live
         }
       } catch {}
@@ -153,16 +148,6 @@ export default function JobsPage() {
 
         <SpecSheet scope={scope} setScope={setScope} busy={busy} started={started} onSearch={() => runSearch(scope, session)} />
 
-        {/* freshness + sources */}
-        {started && !needsResume && (
-          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-stone">
-            {checkedAt && <span>Checked {timeAgo(checkedAt)}</span>}
-            {sources.length > 0 && (
-              <span>Live sources: <span className="text-ink">{sources.join(", ")}</span></span>
-            )}
-            {jobs.some((j) => j.isNew) && <span className="text-crimson">• new since your last visit</span>}
-          </div>
-        )}
 
         {error && (
           <p className="mt-6 rounded-md border border-amber bg-amber/10 px-4 py-3 text-sm">{error}</p>
