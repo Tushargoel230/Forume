@@ -279,7 +279,33 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
   const [docCount, setDocCount] = useState<number | null>(null);
   const [uploadingResume, setUploadingResume] = useState(false);
   const [uploadErr, setUploadErr] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importErr, setImportErr] = useState("");
   const supabase = supabaseBrowser();
+
+  // Paste a job link (LinkedIn/StepStone/Indeed/careers page) → Jina Reader
+  // pulls clean text into the JD field, so users don't copy-paste long posts.
+  async function importFromLink() {
+    if (!linkUrl.trim()) return;
+    setImporting(true);
+    setImportErr("");
+    try {
+      const res = await fetch("/api/jobs/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: linkUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Couldn't import that link.");
+      setJd(data.text);
+      setLinkUrl("");
+    } catch (e) {
+      setImportErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setImporting(false);
+    }
+  }
 
   useEffect(() => {
     openedApplication = null;
@@ -537,6 +563,27 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
           <input value={role} onChange={(e) => setRole(e.target.value)}
             placeholder="e.g. Robotics Software Engineer" className={inputCls} />
         </Field>
+        <div className="mb-4">
+          <span className="block text-sm font-medium mb-1.5">Paste a job link</span>
+          <div className="flex gap-2">
+            <input
+              value={linkUrl}
+              onChange={(e) => setLinkUrl(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); importFromLink(); } }}
+              placeholder="LinkedIn / StepStone / Indeed / careers URL…"
+              className={inputCls}
+            />
+            <button
+              onClick={importFromLink}
+              disabled={importing || !linkUrl.trim()}
+              className="shrink-0 rounded-md border border-ink px-4 text-sm font-semibold transition-colors hover:bg-ink hover:text-paper disabled:opacity-50"
+            >
+              {importing ? "Reading…" : "Import"}
+            </button>
+          </div>
+          {importErr && <p className="mt-2 text-sm text-amber">{importErr}</p>}
+          <p className="mt-1 text-xs text-stone">Auto-fills the description below — or just paste the text yourself.</p>
+        </div>
         <Field label="Job description">
           <textarea value={jd} onChange={(e) => setJd(e.target.value)} rows={12}
             placeholder="Paste the full job description here…" className={inputCls} />

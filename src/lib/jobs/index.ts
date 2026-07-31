@@ -8,6 +8,7 @@ import { isTooOld, matchesCountry, matchesRemote } from "./scope";
 import { apify } from "./providers/apify";
 import { jsearch } from "./providers/jsearch";
 import { adzuna } from "./providers/adzuna";
+import { jooble } from "./providers/jooble";
 import { themuse } from "./providers/themuse";
 import { arbeitnow } from "./providers/arbeitnow";
 import { remotive } from "./providers/remotive";
@@ -18,7 +19,7 @@ import { remotive } from "./providers/remotive";
 //   adzuna  — free keyword+country search
 //   themuse — free, real companies (category-based)
 //   arbeitnow / remotive — zero-auth supplements
-const PROVIDERS: JobProvider[] = [apify, jsearch, adzuna, themuse, arbeitnow, remotive];
+const PROVIDERS: JobProvider[] = [apify, jsearch, adzuna, jooble, themuse, arbeitnow, remotive];
 
 // Sources with NO server-side keyword search → apply a local keyword filter so
 // their results stay on-topic for the query.
@@ -29,7 +30,7 @@ const LOCAL_KEYWORD_FILTER = new Set(["arbeitnow", "themuse"]);
 // strict location-string match to these wrongly drops valid jobs whose location
 // text doesn't literally contain the country name (e.g. Adzuna returns a state),
 // so we trust their server-side country scoping instead.
-const COUNTRY_FILTERED = new Set(["adzuna", "jsearch", "apify"]);
+const COUNTRY_FILTERED = new Set(["adzuna", "jsearch", "apify", "jooble"]);
 
 export type FetchMode = "live" | "background";
 
