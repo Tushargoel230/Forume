@@ -4,6 +4,8 @@ on:
   schedule:
     # 07:00 UTC daily — ops-digest and support-triage, a quiet hour clear of traffic
     - cron: "0 7 * * *"
+    # 09:00 UTC daily — telegram-post (publishes the next approved post; ~10-11am CET)
+    - cron: "0 9 * * *"
     # 08:00 UTC every Monday — growth-content (weekly cadence, needs a week of signal)
     - cron: "0 8 * * 1"
     # 09:00 UTC on the 1st of each month — cost-watchdog
@@ -30,6 +32,17 @@ jobs:
             -H "Content-Type: application/json" \
             -H "x-agent-secret: ${{ secrets.AGENT_CRON_SECRET }}" \
             -d "{\"agent\": \"${{ matrix.agent }}\"}"
+
+  telegram-post:
+    if: github.event.schedule == '0 9 * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger telegram-post
+        run: |
+          curl --fail-with-body -sS -X POST "${{ secrets.FORUME_APP_URL }}/api/agents/run" \
+            -H "Content-Type: application/json" \
+            -H "x-agent-secret: ${{ secrets.AGENT_CRON_SECRET }}" \
+            -d '{"agent": "telegram-post"}'
 
   weekly:
     if: github.event.schedule == '0 8 * * 1'

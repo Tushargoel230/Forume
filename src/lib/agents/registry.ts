@@ -7,6 +7,7 @@ import { cybersecurityAudit } from "./cybersecurity-audit";
 import { finance } from "./finance";
 import { marketingAnalytics } from "./marketing-analytics";
 import { designReview } from "./design-review";
+import { telegramPost } from "./telegram-post";
 import type { Agent } from "./types";
 
 export const AGENT_REGISTRY: Record<string, Agent> = {
@@ -19,4 +20,5 @@ export const AGENT_REGISTRY: Record<string, Agent> = {
   "finance": finance,
   "marketing-analytics": marketingAnalytics,
   "design-review": designReview,
+  "telegram-post": telegramPost,
 };

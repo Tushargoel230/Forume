@@ -46,6 +46,7 @@ const AGENTS: { id: string; label: string; group: string; cadence: string }[] = 
   { id: "cost-watchdog", label: "Cost watchdog", group: "Finance", cadence: "monthly" },
   { id: "marketing-analytics", label: "Marketing", group: "Growth", cadence: "weekly" },
   { id: "growth-content", label: "Growth content", group: "Growth", cadence: "weekly" },
+  { id: "telegram-post", label: "Daily IG assets", group: "Growth", cadence: "daily" },
   { id: "design-review", label: "Design review", group: "Product", cadence: "weekly" },
 ];
 
