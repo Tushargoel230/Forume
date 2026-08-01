@@ -71,6 +71,7 @@ export default function AdminPage() {
   const [message, setMessage] = useState("");
   const [legalChange, setLegalChange] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [runResult, setRunResult] = useState<string | null>(null);
 
   useEffect(() => {
     supabaseBrowser()
@@ -101,11 +102,22 @@ export default function AdminPage() {
   async function trigger(agent: string, input?: string) {
     if (!token) return;
     setBusy(agent);
-    await fetch("/api/admin/trigger", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ agent, input }),
-    });
+    setRunResult(null);
+    try {
+      const res = await fetch("/api/admin/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ agent, input }),
+      });
+      const body = await res.json().catch(() => ({}));
+      setRunResult(
+        res.ok
+          ? `✓ ${agent}: ${body.summary ?? "done."}`
+          : `✗ ${agent}: ${body.error ?? `failed (${res.status})`}`,
+      );
+    } catch (e) {
+      setRunResult(`✗ ${agent}: ${e instanceof Error ? e.message : String(e)}`);
+    }
     await load(token);
     setBusy(null);
   }
@@ -143,6 +155,19 @@ export default function AdminPage() {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ id, status }),
+    });
+    await load(token);
+    setBusy(null);
+  }
+
+  /** Move every draft to approved/rejected in one click. */
+  async function setAllContent(status: string) {
+    if (!token) return;
+    setBusy("content-bulk");
+    await fetch("/api/admin/content", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ bulk: true, from: "draft", status }),
     });
     await load(token);
     setBusy(null);
@@ -229,6 +254,17 @@ export default function AdminPage() {
       {/* The agent team — grouped by domain, each with its last run + a Run button */}
       <section className="mb-12">
         <h2 className="mb-4 text-sm font-bold uppercase tracking-[0.2em] text-stone">The agent team</h2>
+        {runResult && (
+          <div
+            className={`mb-4 rounded-md border px-4 py-3 text-sm ${
+              runResult.startsWith("✓")
+                ? "border-pine/40 bg-pine/10 text-pine"
+                : "border-crimson/40 bg-crimson/10 text-crimson"
+            }`}
+          >
+            {runResult}
+          </div>
+        )}
         <div className="space-y-6">
           {AGENT_GROUPS.map((group) => {
             const inGroup = AGENTS.filter((a) => a.group === group);
@@ -294,7 +330,27 @@ export default function AdminPage() {
       </section>
 
       <section className="mb-12">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-[0.2em] text-stone">Content queue</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-stone">Content queue</h2>
+          {contentQueue.some((c) => c.status === "draft") && (
+            <div className="flex gap-3">
+              <button
+                onClick={() => setAllContent("approved")}
+                disabled={busy === "content-bulk"}
+                className="text-xs font-semibold text-pine hover:underline disabled:opacity-50"
+              >
+                Approve all
+              </button>
+              <button
+                onClick={() => setAllContent("rejected")}
+                disabled={busy === "content-bulk"}
+                className="text-xs font-semibold text-crimson hover:underline disabled:opacity-50"
+              >
+                Reject all
+              </button>
+            </div>
+          )}
+        </div>
         <ul className="space-y-3">
           {contentQueue.map((c) => (
             <li key={c.id} className="rounded-md border border-rule bg-paper p-4 text-sm">
