@@ -50,7 +50,7 @@ export const telegramPost: Agent = async (ctx) => {
 
   const { error: upErr } = await ctx.supabase
     .from("content_queue")
-    .update({ status: "posted", posted_at: new Date().toISOString() })
+    .update({ status: "posted" })
     .eq("id", item.id);
   if (upErr) throw new Error(`Sent, but failed to mark item ${item.id} as posted: ${upErr.message}`);
 
