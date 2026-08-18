@@ -125,6 +125,23 @@ body {
 }
 .drift { animation: drift 7s ease-in-out infinite; animation-delay: var(--drift-delay, 0s); }
 
+/* hero proof: the ATS stamp thumps down, the crop marks develop into place */
+@keyframes stamp-thump {
+  0%   { opacity: 0; transform: rotate(-24deg) scale(1.7); }
+  60%  { opacity: 1; transform: rotate(-2deg) scale(0.92); }
+  80%  { transform: rotate(-6deg) scale(1.03); }
+  100% { opacity: 1; transform: rotate(-4deg) scale(1); }
+}
+.stamp-thump { animation: stamp-thump 0.6s cubic-bezier(0.2, 1.5, 0.35, 1) both 1.2s; }
+@keyframes crop-develop { from { opacity: 0; } to { opacity: 1; } }
+.proof-crops::before { opacity: 0; animation: crop-develop 0.6s ease both 1s; }
+
+/* Lenis smooth scroll — recommended base styles from the lenis package */
+html.lenis, html.lenis body { height: auto; }
+.lenis.lenis-smooth { scroll-behavior: auto !important; }
+.lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+.lenis.lenis-stopped { overflow: hidden; }
+
 /* app ATS gauge: sweep in from empty to the inline target offset */
 .arc-score { animation: arc-in 1.4s cubic-bezier(0.22, 1, 0.36, 1); }
 @keyframes arc-in { from { stroke-dashoffset: 151; } }
@@ -141,6 +158,8 @@ body {
   html { scroll-behavior: auto; }
   .reveal, .rise { opacity: 1; transform: none; animation: none; transition: none; }
   .drift { animation: none; }
+  .stamp-thump { animation: none; }
+  .proof-crops::before { animation: none; opacity: 1; }
   .arc-path { stroke-dashoffset: 0; transition: none; }
   .arc-score { animation: none; }
 }

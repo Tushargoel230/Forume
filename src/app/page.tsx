@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AuthCatch } from "@/components/AuthCatch";
 import { Logo } from "@/components/Logo";
 import { ResumeMini } from "@/components/ResumeMini";
+import { HeroCards } from "@/components/HeroCards";
 import { Reveal } from "@/components/Reveal";
 
 const story = [
@@ -164,19 +165,8 @@ export default function Landing() {
             </p>
           </div>
 
-          {/* layered card composition */}
-          <div className="rise relative mx-auto h-[420px] w-full max-w-[400px]" style={{ "--rise-delay": "0.4s" } as React.CSSProperties}>
-            <div className="drift absolute left-0 top-10 w-[76%]" style={{ "--tilt": "-5deg", "--drift-delay": "0.8s" } as React.CSSProperties}>
-              <ResumeMini variant="modern" className="opacity-80" />
-            </div>
-            <div className="drift absolute right-0 top-0 w-[80%]" style={{ "--tilt": "2.5deg" } as React.CSSProperties}>
-              <ResumeMini variant="slate" />
-            </div>
-            <span className="stamp absolute -bottom-1 right-6 bg-coal/80 text-2xl text-gold-soft backdrop-blur-sm">
-              ATS 100
-              <span className="block text-[0.5rem] tracking-[0.24em]">passes screening</span>
-            </span>
-          </div>
+          {/* layered card composition — interactive proof */}
+          <HeroCards />
         </div>
       </section>
 

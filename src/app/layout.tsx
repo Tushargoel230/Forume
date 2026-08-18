@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Newsreader, Public_Sans } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { SmoothScroll } from "@/components/SmoothScroll";
 import "./globals.css";
 
 const newsreader = Newsreader({
@@ -49,6 +50,7 @@ export default function RootLayout({
       className={`${newsreader.variable} ${publicSans.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
+        <SmoothScroll />
         {children}
         <Analytics />
       </body>
