@@ -10,9 +10,10 @@ export type LlmConfig = { baseUrl: string; apiKey: string; model: string };
 // via its OpenAI-compatible endpoint) so long resumes are no longer truncated.
 export const CONTEXT_BUDGET = Number(process.env.LLM_CONTEXT_BUDGET) || 11000;
 
-// Cap output so a runaway completion can't get provider-side truncated into
-// invalid JSON. A one-page resume JSON fits comfortably under 4k tokens.
-const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 4096;
+// Completion budget. Reasoning models (Groq gpt-oss) spend tokens "thinking"
+// before the JSON, so this must cover reasoning + output or the JSON gets cut
+// off mid-object (json_validate_failed: "max completion tokens reached").
+const MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 8192;
 
 export function llmConfigFromEnv(): LlmConfig | null {
   const baseUrl = process.env.LLM_BASE_URL;
@@ -49,7 +50,13 @@ export async function chat(
         ],
         ...(jsonMode ? { response_format: { type: "json_object" } } : {}),
         temperature: temperature ?? (jsonMode ? 0.4 : 0.7),
-        max_tokens: MAX_TOKENS,
+        // Reasoning models (Groq gpt-oss) burn completion tokens thinking before
+        // they emit the JSON — give them the reasoning-inclusive budget and keep
+        // reasoning minimal so the JSON completes. Other providers (Ollama) keep
+        // the plain max_tokens cap.
+        ...(cfg.model.includes("gpt-oss")
+          ? { max_completion_tokens: MAX_TOKENS, reasoning_effort: process.env.LLM_REASONING_EFFORT || "low" }
+          : { max_tokens: MAX_TOKENS }),
       }),
     });
     if (res.ok) {
