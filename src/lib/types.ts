@@ -70,6 +70,13 @@ export type UpskillPlan = {
   gaps: { skill: string; priority: "high" | "medium" | "low"; why: string; resource: string }[];
 };
 
+/* On-demand grounding audit: résumé claims not clearly supported by the sources. */
+export type GroundingReview = {
+  verdict: "clean" | "flags";
+  note: string;
+  flags: { claim: string; issue: string }[];
+};
+
 export type Application = {
   id: number;
   company: string;
@@ -92,4 +99,5 @@ export type Application = {
   follow_up_at?: string | null;
   interview_prep?: InterviewPrep | null;
   upskill_plan?: UpskillPlan | null;
+  grounding_review?: GroundingReview | null;
 };

@@ -15,7 +15,7 @@ import { maybeImportDemoData } from "@/lib/import-demo";
 import {
   FUNNEL, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER, funnelCounts, isQuiet, statusOf,
 } from "@/lib/tracker";
-import type { AppStatus, Application, AtsReport, Contact, Fit, FitLevel, InterviewPrep, Resume, UpskillPlan } from "@/lib/types";
+import type { AppStatus, Application, AtsReport, Contact, Fit, FitLevel, GroundingReview, InterviewPrep, Resume, UpskillPlan } from "@/lib/types";
 
 const DEMO_APPS_KEY = "forume-demo-applications";
 
@@ -1427,8 +1427,8 @@ function Tracker({ onOpen }: { onOpen: () => void }) {
   const supabase = supabaseBrowser();
   const [apps, setApps] = useState<Application[]>([]);
   const [filter, setFilter] = useState<TrackFilter>("all");
-  const [open, setOpen] = useState<{ id: number; kind: "prep" | "upskill" } | null>(null);
-  const toggle = (id: number, kind: "prep" | "upskill") =>
+  const [open, setOpen] = useState<{ id: number; kind: "prep" | "upskill" | "review" } | null>(null);
+  const toggle = (id: number, kind: "prep" | "upskill" | "review") =>
     setOpen(open && open.id === id && open.kind === kind ? null : { id, kind });
 
   const load = useCallback(async () => {
@@ -1553,6 +1553,12 @@ function Tracker({ onOpen }: { onOpen: () => void }) {
                 >
                   Skill gaps
                 </button>
+                <button
+                  onClick={() => toggle(a.id, "review")}
+                  className={`text-xs font-medium hover:text-ink ${open?.id === a.id && open.kind === "review" ? "text-ink" : "text-stone"}`}
+                >
+                  Fact-check
+                </button>
                 <select
                   value={statusOf(a)}
                   onChange={(e) => setStatus(a, e.target.value as AppStatus)}
@@ -1569,6 +1575,7 @@ function Tracker({ onOpen }: { onOpen: () => void }) {
               </div>
               {open?.id === a.id && open.kind === "prep" && <InterviewPrepPanel app={a} />}
               {open?.id === a.id && open.kind === "upskill" && <UpskillPanel app={a} />}
+              {open?.id === a.id && open.kind === "review" && <ReviewPanel app={a} />}
             </li>
           ))}
         </ul>
@@ -1742,6 +1749,81 @@ function UpskillPanel({ app }: { app: Application }) {
             ))}
           </ul>
           <button onClick={() => generate(true)} className="text-xs text-stone underline hover:text-ink">Regenerate</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewPanel({ app }: { app: Application }) {
+  const supabase = supabaseBrowser();
+  const [review, setReview] = useState<GroundingReview | null>(app.grounding_review ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function run(force = false) {
+    setBusy(true);
+    setErr("");
+    try {
+      const demo = getDemoSession();
+      let token = "";
+      let documents: { name: string; content: string }[] = [];
+      if (demo) {
+        token = demo.access_token;
+        try { documents = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]"); } catch {}
+      } else {
+        const { data } = await supabase.auth.getSession();
+        token = data.session?.access_token ?? "";
+      }
+      const res = await fetch("/api/review", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(demo ? { "X-Demo-Email": demo.user.email ?? "" } : {}),
+        },
+        body: JSON.stringify(demo ? { resume: app.resume, documents, force } : { applicationId: app.id, force }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      setReview(data.review);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-sm border border-rule bg-linen p-4">
+      {!review && !busy && (
+        <button
+          onClick={() => run(false)}
+          className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-paper transition-colors hover:bg-crimson"
+        >
+          Fact-check against my documents
+        </button>
+      )}
+      {busy && <p className="text-sm text-stone">Checking every claim against your sources…</p>}
+      {err && <p className="rounded-md border border-amber bg-amber/10 px-3 py-2 text-sm">{err}</p>}
+      {review && !busy && (
+        <div className="space-y-3 text-sm leading-relaxed">
+          {review.verdict === "clean" ? (
+            <p className="flex items-center gap-2"><span className="font-bold text-pine">✓</span><span>{review.note}</span></p>
+          ) : (
+            <>
+              <p className="flex items-center gap-2"><span className="font-bold text-amber">!</span><span>{review.note}</span></p>
+              <ul className="space-y-2">
+                {review.flags.map((f, i) => (
+                  <li key={i} className="border-l-2 border-amber pl-3">
+                    <p className="font-semibold">{f.claim}</p>
+                    <p className="text-stone">{f.issue}</p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <button onClick={() => run(true)} className="text-xs text-stone underline hover:text-ink">Re-check</button>
         </div>
       )}
     </div>
