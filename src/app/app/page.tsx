@@ -15,7 +15,7 @@ import { maybeImportDemoData } from "@/lib/import-demo";
 import {
   FUNNEL, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER, funnelCounts, isQuiet, statusOf,
 } from "@/lib/tracker";
-import type { AppStatus, Application, AtsReport, Contact, Fit, FitLevel, InterviewPrep, Resume } from "@/lib/types";
+import type { AppStatus, Application, AtsReport, Contact, Fit, FitLevel, InterviewPrep, Resume, UpskillPlan } from "@/lib/types";
 
 const DEMO_APPS_KEY = "forume-demo-applications";
 
@@ -1427,7 +1427,9 @@ function Tracker({ onOpen }: { onOpen: () => void }) {
   const supabase = supabaseBrowser();
   const [apps, setApps] = useState<Application[]>([]);
   const [filter, setFilter] = useState<TrackFilter>("all");
-  const [openPrep, setOpenPrep] = useState<number | null>(null);
+  const [open, setOpen] = useState<{ id: number; kind: "prep" | "upskill" } | null>(null);
+  const toggle = (id: number, kind: "prep" | "upskill") =>
+    setOpen(open && open.id === id && open.kind === kind ? null : { id, kind });
 
   const load = useCallback(async () => {
     const demoSession = getDemoSession();
@@ -1540,10 +1542,16 @@ function Tracker({ onOpen }: { onOpen: () => void }) {
                   </span>
                 </button>
                 <button
-                  onClick={() => setOpenPrep(openPrep === a.id ? null : a.id)}
-                  className="text-xs font-medium text-stone hover:text-ink"
+                  onClick={() => toggle(a.id, "prep")}
+                  className={`text-xs font-medium hover:text-ink ${open?.id === a.id && open.kind === "prep" ? "text-ink" : "text-stone"}`}
                 >
-                  {openPrep === a.id ? "Hide prep" : "Interview prep"}
+                  Interview prep
+                </button>
+                <button
+                  onClick={() => toggle(a.id, "upskill")}
+                  className={`text-xs font-medium hover:text-ink ${open?.id === a.id && open.kind === "upskill" ? "text-ink" : "text-stone"}`}
+                >
+                  Skill gaps
                 </button>
                 <select
                   value={statusOf(a)}
@@ -1559,7 +1567,8 @@ function Tracker({ onOpen }: { onOpen: () => void }) {
                   ✕
                 </button>
               </div>
-              {openPrep === a.id && <InterviewPrepPanel app={a} />}
+              {open?.id === a.id && open.kind === "prep" && <InterviewPrepPanel app={a} />}
+              {open?.id === a.id && open.kind === "upskill" && <UpskillPanel app={a} />}
             </li>
           ))}
         </ul>
@@ -1655,6 +1664,83 @@ function InterviewPrepPanel({ app }: { app: Application }) {
             <H>Your angle</H>
             <p className="text-stone">{prep.company_angle}</p>
           </div>
+          <button onClick={() => generate(true)} className="text-xs text-stone underline hover:text-ink">Regenerate</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UpskillPanel({ app }: { app: Application }) {
+  const supabase = supabaseBrowser();
+  const [plan, setPlan] = useState<UpskillPlan | null>(app.upskill_plan ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function generate(force = false) {
+    setBusy(true);
+    setErr("");
+    try {
+      const demo = getDemoSession();
+      let token = "";
+      let documents: { name: string; content: string }[] = [];
+      if (demo) {
+        token = demo.access_token;
+        try { documents = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]"); } catch {}
+      } else {
+        const { data } = await supabase.auth.getSession();
+        token = data.session?.access_token ?? "";
+      }
+      const res = await fetch("/api/upskill", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(demo ? { "X-Demo-Email": demo.user.email ?? "" } : {}),
+        },
+        body: JSON.stringify(
+          demo ? { jd: app.jd, resume: app.resume, documents, force } : { applicationId: app.id, force },
+        ),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      setPlan(data.plan);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pri: Record<string, string> = { high: "text-crimson", medium: "text-amber", low: "text-stone" };
+
+  return (
+    <div className="mt-3 rounded-sm border border-rule bg-linen p-4">
+      {!plan && !busy && (
+        <button
+          onClick={() => generate(false)}
+          className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-paper transition-colors hover:bg-crimson"
+        >
+          Find my skill gaps
+        </button>
+      )}
+      {busy && <p className="text-sm text-stone">Comparing your background to the role…</p>}
+      {err && <p className="rounded-md border border-amber bg-amber/10 px-3 py-2 text-sm">{err}</p>}
+      {plan && !busy && (
+        <div className="space-y-4 text-sm leading-relaxed">
+          <p className="text-stone">{plan.summary}</p>
+          <ul className="space-y-3">
+            {plan.gaps.map((g, i) => (
+              <li key={i} className="border-l-2 border-rule pl-3">
+                <p className="font-semibold">
+                  {g.skill}
+                  <span className={`ml-2 text-[0.6rem] font-bold uppercase tracking-[0.14em] ${pri[g.priority] ?? "text-stone"}`}>{g.priority}</span>
+                </p>
+                <p className="text-stone">{g.why}</p>
+                <p className="mt-0.5"><span className="font-medium">Learn:</span> <span className="text-stone">{g.resource}</span></p>
+              </li>
+            ))}
+          </ul>
           <button onClick={() => generate(true)} className="text-xs text-stone underline hover:text-ink">Regenerate</button>
         </div>
       )}
