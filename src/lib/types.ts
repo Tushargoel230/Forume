@@ -56,6 +56,20 @@ export type AppStatus =
   | "saved" | "drafted" | "applied" | "interviewing"
   | "offer" | "hired" | "rejected" | "no_response";
 
+/* On-demand interview prep, grounded in the candidate's own background. */
+export type InterviewPrep = {
+  likely_questions: { q: string; why: string }[];
+  star_answers: { prompt: string; answer: string }[];
+  questions_to_ask: string[];
+  company_angle: string;
+};
+
+/* On-demand learning plan closing the honest gaps for a role. */
+export type UpskillPlan = {
+  summary: string;
+  gaps: { skill: string; priority: "high" | "medium" | "low"; why: string; resource: string }[];
+};
+
 export type Application = {
   id: number;
   company: string;
@@ -76,4 +90,6 @@ export type Application = {
   applied_at?: string | null;
   last_activity_at?: string | null;
   follow_up_at?: string | null;
+  interview_prep?: InterviewPrep | null;
+  upskill_plan?: UpskillPlan | null;
 };

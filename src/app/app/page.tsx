@@ -15,7 +15,7 @@ import { maybeImportDemoData } from "@/lib/import-demo";
 import {
   FUNNEL, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER, funnelCounts, isQuiet, statusOf,
 } from "@/lib/tracker";
-import type { AppStatus, Application, AtsReport, Contact, Fit, FitLevel, Resume } from "@/lib/types";
+import type { AppStatus, Application, AtsReport, Contact, Fit, FitLevel, InterviewPrep, Resume } from "@/lib/types";
 
 const DEMO_APPS_KEY = "forume-demo-applications";
 
@@ -1427,6 +1427,7 @@ function Tracker({ onOpen }: { onOpen: () => void }) {
   const supabase = supabaseBrowser();
   const [apps, setApps] = useState<Application[]>([]);
   const [filter, setFilter] = useState<TrackFilter>("all");
+  const [openPrep, setOpenPrep] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     const demoSession = getDemoSession();
@@ -1523,37 +1524,140 @@ function Tracker({ onOpen }: { onOpen: () => void }) {
             </li>
           )}
           {shown.map((a) => (
-            <li key={a.id} className="flex flex-wrap items-center gap-3 p-4">
-              <button
-                onClick={() => { setOpenedApplication(a); onOpen(); }}
-                className="min-w-0 flex-1 text-left"
-              >
-                <span className="block truncate text-sm font-medium hover:text-crimson">
-                  {[a.role, a.company].filter(Boolean).join(" @ ") || "Untitled application"}
-                  {a.is_demo && <span className="ml-2 text-xs text-amber">(sample)</span>}
-                  {isQuiet(a) && <span className="ml-2 text-xs text-amber">• follow up</span>}
-                </span>
-                <span className="mt-0.5 block text-xs text-stone">
-                  {new Date(a.created_at).toLocaleDateString()}
-                </span>
-              </button>
-              <select
-                value={statusOf(a)}
-                onChange={(e) => setStatus(a, e.target.value as AppStatus)}
-                aria-label="Application status"
-                className="rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ink"
-              >
-                {STATUS_ORDER.map((s) => (
-                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-                ))}
-              </select>
-              <button onClick={() => remove(a)} aria-label="Delete" className="text-stone hover:text-amber text-sm">
-                ✕
-              </button>
+            <li key={a.id} className="p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => { setOpenedApplication(a); onOpen(); }}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="block truncate text-sm font-medium hover:text-crimson">
+                    {[a.role, a.company].filter(Boolean).join(" @ ") || "Untitled application"}
+                    {a.is_demo && <span className="ml-2 text-xs text-amber">(sample)</span>}
+                    {isQuiet(a) && <span className="ml-2 text-xs text-amber">• follow up</span>}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-stone">
+                    {new Date(a.created_at).toLocaleDateString()}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setOpenPrep(openPrep === a.id ? null : a.id)}
+                  className="text-xs font-medium text-stone hover:text-ink"
+                >
+                  {openPrep === a.id ? "Hide prep" : "Interview prep"}
+                </button>
+                <select
+                  value={statusOf(a)}
+                  onChange={(e) => setStatus(a, e.target.value as AppStatus)}
+                  aria-label="Application status"
+                  className="rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ink"
+                >
+                  {STATUS_ORDER.map((s) => (
+                    <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                  ))}
+                </select>
+                <button onClick={() => remove(a)} aria-label="Delete" className="text-stone hover:text-amber text-sm">
+                  ✕
+                </button>
+              </div>
+              {openPrep === a.id && <InterviewPrepPanel app={a} />}
             </li>
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+function InterviewPrepPanel({ app }: { app: Application }) {
+  const supabase = supabaseBrowser();
+  const [prep, setPrep] = useState<InterviewPrep | null>(app.interview_prep ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function generate(force = false) {
+    setBusy(true);
+    setErr("");
+    try {
+      const demo = getDemoSession();
+      let token = "";
+      let documents: { name: string; content: string }[] = [];
+      if (demo) {
+        token = demo.access_token;
+        try { documents = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]"); } catch {}
+      } else {
+        const { data } = await supabase.auth.getSession();
+        token = data.session?.access_token ?? "";
+      }
+      const res = await fetch("/api/interview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(demo ? { "X-Demo-Email": demo.user.email ?? "" } : {}),
+        },
+        body: JSON.stringify(
+          demo
+            ? { jd: app.jd, company: app.company, role: app.role, resume: app.resume, documents, force }
+            : { applicationId: app.id, force },
+        ),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      setPrep(data.prep);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const H = ({ children }: { children: React.ReactNode }) => (
+    <p className="mb-1.5 text-xs font-bold uppercase tracking-[0.16em] text-crimson">{children}</p>
+  );
+
+  return (
+    <div className="mt-3 rounded-sm border border-rule bg-linen p-4">
+      {!prep && !busy && (
+        <button
+          onClick={() => generate(false)}
+          className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-paper transition-colors hover:bg-crimson"
+        >
+          Generate interview prep
+        </button>
+      )}
+      {busy && <p className="text-sm text-stone">Preparing — grounded in your real experience…</p>}
+      {err && <p className="rounded-md border border-amber bg-amber/10 px-3 py-2 text-sm">{err}</p>}
+      {prep && !busy && (
+        <div className="space-y-5 text-sm leading-relaxed">
+          <div>
+            <H>Likely questions</H>
+            <ul className="space-y-2">
+              {prep.likely_questions.map((q, i) => (
+                <li key={i}><span className="font-semibold">{q.q}</span> <span className="text-stone">— {q.why}</span></li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <H>STAR answers, from your experience</H>
+            <div className="space-y-3">
+              {prep.star_answers.map((s, i) => (
+                <div key={i}><p className="font-semibold">{s.prompt}</p><p className="text-stone">{s.answer}</p></div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <H>Questions to ask them</H>
+            <ul className="list-disc space-y-1 pl-5 text-stone">
+              {prep.questions_to_ask.map((q, i) => <li key={i}>{q}</li>)}
+            </ul>
+          </div>
+          <div>
+            <H>Your angle</H>
+            <p className="text-stone">{prep.company_angle}</p>
+          </div>
+          <button onClick={() => generate(true)} className="text-xs text-stone underline hover:text-ink">Regenerate</button>
+        </div>
+      )}
     </div>
   );
 }
