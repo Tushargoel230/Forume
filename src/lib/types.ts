@@ -51,6 +51,11 @@ export type Contact = {
   photo?: string;
 };
 
+/* Where an application sits in the search funnel. */
+export type AppStatus =
+  | "saved" | "drafted" | "applied" | "interviewing"
+  | "offer" | "hired" | "rejected" | "no_response";
+
 export type Application = {
   id: number;
   company: string;
@@ -63,4 +68,12 @@ export type Application = {
   show_photo?: boolean;
   is_demo: boolean;
   created_at: string;
+  /* tracker fields (added by db/application-tracker.sql; optional so pre-migration
+     rows and demo apps still type-check) */
+  status?: AppStatus;
+  job_url?: string | null;
+  notes?: string | null;
+  applied_at?: string | null;
+  last_activity_at?: string | null;
+  follow_up_at?: string | null;
 };

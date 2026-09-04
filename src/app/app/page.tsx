@@ -12,7 +12,10 @@ import { atsCheck } from "@/lib/ats";
 import { extractText } from "@/lib/extract-text";
 import { fileToResizedDataUrl } from "@/lib/image";
 import { maybeImportDemoData } from "@/lib/import-demo";
-import type { Application, AtsReport, Contact, Fit, FitLevel, Resume } from "@/lib/types";
+import {
+  FUNNEL, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER, funnelCounts, isQuiet, statusOf,
+} from "@/lib/tracker";
+import type { AppStatus, Application, AtsReport, Contact, Fit, FitLevel, Resume } from "@/lib/types";
 
 const DEMO_APPS_KEY = "forume-demo-applications";
 
@@ -199,7 +202,7 @@ export default function Dashboard() {
           <PageHeader tab={tab} />
           {tab === "new" && <NewApplication session={session} />}
           {tab === "profile" && <Profile session={session} />}
-          {tab === "history" && <History onOpen={() => setTab("new")} />}
+          {tab === "history" && <Tracker onOpen={() => setTab("new")} />}
         </div>
       </section>
     </main>
@@ -209,7 +212,7 @@ export default function Dashboard() {
 const NAV: { id: Tab; label: string; hint: string }[] = [
   { id: "new", label: "New application", hint: "Paste a job, pull a proof" },
   { id: "profile", label: "Your sources", hint: "Resumes, notes, contact" },
-  { id: "history", label: "Archive", hint: "Everything you've generated" },
+  { id: "history", label: "Tracker", hint: "Every application & outcome" },
 ];
 
 const HEADERS: Record<Tab, { kicker: string; title: string; note: string }> = {
@@ -224,9 +227,9 @@ const HEADERS: Record<Tab, { kicker: string; title: string; note: string }> = {
     note: "Everything generated is drawn from the documents and details stored here.",
   },
   history: {
-    kicker: "The archive",
-    title: "Every proof you've pulled.",
-    note: "Reopen, reprint, or discard past applications.",
+    kicker: "The tracker",
+    title: "Every application, one board.",
+    note: "Move each role through the funnel — applied, interviewing, offer — and catch the ones going quiet.",
   },
 };
 
@@ -1416,11 +1419,14 @@ function Profile({ session }: { session: Session | DemoSession }) {
   );
 }
 
-/* ---------------- history ---------------- */
+/* ---------------- tracker ---------------- */
 
-function History({ onOpen }: { onOpen: () => void }) {
+type TrackFilter = "all" | "open" | "followup";
+
+function Tracker({ onOpen }: { onOpen: () => void }) {
   const supabase = supabaseBrowser();
   const [apps, setApps] = useState<Application[]>([]);
+  const [filter, setFilter] = useState<TrackFilter>("all");
 
   const load = useCallback(async () => {
     const demoSession = getDemoSession();
@@ -1429,60 +1435,119 @@ function History({ onOpen }: { onOpen: () => void }) {
       setApps(stored ? JSON.parse(stored) : []);
       return;
     }
-
     const { data } = await supabase
       .from("applications")
-      .select("id, company, role, jd, resume, cover_letter, ats, template, show_photo, is_demo, created_at")
+      .select(
+        "id, company, role, jd, resume, cover_letter, ats, template, show_photo, is_demo, created_at, status, job_url, notes, applied_at, last_activity_at, follow_up_at",
+      )
       .order("id", { ascending: false });
     setApps((data as Application[]) ?? []);
   }, [supabase]);
 
   useEffect(() => { load(); }, [load]);
 
+  const persistDemo = (next: Application[]) => {
+    if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-applications", JSON.stringify(next));
+  };
+
+  async function setStatus(a: Application, status: AppStatus) {
+    const now = new Date().toISOString();
+    const patch: Partial<Application> = { status, last_activity_at: now };
+    if (status === "applied" && !a.applied_at) patch.applied_at = now;
+    const next = apps.map((x) => (x.id === a.id ? { ...x, ...patch } : x));
+    setApps(next);
+    if (getDemoSession()) { persistDemo(next); return; }
+    await supabase.from("applications").update(patch).eq("id", a.id);
+  }
+
+  async function remove(a: Application) {
+    if (!confirm("Delete this application?")) return;
+    const next = apps.filter((x) => x.id !== a.id);
+    setApps(next);
+    if (getDemoSession()) { persistDemo(next); return; }
+    await supabase.from("applications").delete().eq("id", a.id);
+  }
+
+  const counts = funnelCounts(apps);
+  const quiet = apps.filter(isQuiet);
+  const shown = apps.filter((a) => {
+    if (filter === "open") return OPEN_STATUSES.includes(statusOf(a));
+    if (filter === "followup") return isQuiet(a);
+    return true;
+  });
+
   return (
     <div className="max-w-3xl">
-      <div className="rounded-sm border border-rule bg-paper p-6">
-        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2 mb-4">
-          Past applications
-        </h2>
+      {/* the funnel */}
+      <div className="mb-6 grid grid-cols-3 gap-3 sm:grid-cols-5">
+        {FUNNEL.map((s) => (
+          <div key={s} className="rounded-sm border border-rule bg-paper px-3 py-4 text-center">
+            <div className="font-display text-3xl leading-none">{counts[s] ?? 0}</div>
+            <div className="mt-1.5 text-[0.6rem] font-bold uppercase tracking-[0.14em] text-stone">{STATUS_LABEL[s]}</div>
+          </div>
+        ))}
+      </div>
+
+      {quiet.length > 0 && (
+        <div className="mb-5 rounded-sm border border-amber bg-amber/10 px-4 py-3 text-sm">
+          <b>{quiet.length}</b> application{quiet.length > 1 ? "s have" : " has"} gone quiet (10+ days).{" "}
+          <button onClick={() => setFilter("followup")} className="font-semibold text-crimson hover:underline">
+            Review for follow-up →
+          </button>
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-wrap gap-2 text-sm">
+        {([
+          ["all", "All"],
+          ["open", "In progress"],
+          ["followup", "Needs follow-up"],
+        ] as [TrackFilter, string][]).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setFilter(id)}
+            className={`rounded-md px-3.5 py-1.5 font-medium transition-colors ${filter === id ? "bg-ink text-paper" : "text-stone hover:text-ink"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="rounded-sm border border-rule bg-paper">
         <ul className="divide-y divide-rule">
-          {apps.length === 0 && (
-            <li className="py-3 text-sm text-stone">
-              Nothing yet — generate your first tailored application.
+          {shown.length === 0 && (
+            <li className="p-6 text-sm text-stone">
+              {apps.length === 0
+                ? "Nothing yet — generate your first tailored application."
+                : "No applications in this view."}
             </li>
           )}
-          {apps.map((a) => (
-            <li key={a.id} className="py-3.5 flex items-center gap-4">
+          {shown.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center gap-3 p-4">
               <button
                 onClick={() => { setOpenedApplication(a); onOpen(); }}
-                className="min-w-0 flex-1 text-left text-sm hover:text-crimson"
+                className="min-w-0 flex-1 text-left"
               >
-                <span className="block font-medium">
+                <span className="block truncate text-sm font-medium hover:text-crimson">
                   {[a.role, a.company].filter(Boolean).join(" @ ") || "Untitled application"}
                   {a.is_demo && <span className="ml-2 text-xs text-amber">(sample)</span>}
+                  {isQuiet(a) && <span className="ml-2 text-xs text-amber">• follow up</span>}
                 </span>
-                {a.jd && (
-                  <span className="mt-0.5 block truncate text-xs font-normal text-stone">{a.jd}</span>
-                )}
+                <span className="mt-0.5 block text-xs text-stone">
+                  {new Date(a.created_at).toLocaleDateString()}
+                </span>
               </button>
-              <span className="text-xs text-stone">
-                {new Date(a.created_at).toLocaleDateString()}
-              </span>
-              <button
-                onClick={async () => {
-                  if (!confirm("Delete this application?")) return;
-                  const demoSession = getDemoSession();
-                  if (demoSession) {
-                    const nextApps = apps.filter((app) => app.id !== a.id);
-                    if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-applications", JSON.stringify(nextApps));
-                    setApps(nextApps);
-                    return;
-                  }
-                  await supabase.from("applications").delete().eq("id", a.id);
-                  load();
-                }}
-                className="text-stone hover:text-amber text-sm"
+              <select
+                value={statusOf(a)}
+                onChange={(e) => setStatus(a, e.target.value as AppStatus)}
+                aria-label="Application status"
+                className="rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ink"
               >
+                {STATUS_ORDER.map((s) => (
+                  <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                ))}
+              </select>
+              <button onClick={() => remove(a)} aria-label="Delete" className="text-stone hover:text-amber text-sm">
                 ✕
               </button>
             </li>
