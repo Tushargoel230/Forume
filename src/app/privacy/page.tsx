@@ -30,13 +30,23 @@ export default function Privacy() {
       <p>
         When you generate an application, the job description and your documents
         are sent to our AI provider — currently <b>Google (Gemini API)</b>,
-        servers in the <b>United States</b> — to write the draft. During free
-        early access Forume runs on Google&apos;s free API tier, and on that tier
-        Google may use the submitted content to improve its models, per{" "}
-        <b>Google&apos;s API terms</b>. Before Forume opens to general use we will
-        move to Google&apos;s paid tier, which contractually prohibits training on
-        your content. If you are not comfortable with this transfer, don&apos;t
-        use the generation feature — you can still edit and export manually.
+        servers in the <b>United States</b> — to write the draft.
+      </p>
+      <p>
+        <b>Please read this part.</b> Forume runs on Google&apos;s{" "}
+        <b>free Gemini API tier</b>. On that tier, Google may{" "}
+        <b>use the content you submit</b> — your job descriptions and your
+        uploaded documents — to develop and improve its AI models, and Google
+        staff may review it, per <b>Google&apos;s API terms</b>. In plain terms:
+        anything you send through the generator could be used by Google to train
+        its models. Don&apos;t submit anything you wouldn&apos;t want used that
+        way.
+      </p>
+      <p>
+        You can use Forume <b>without</b> the generator — write, edit, and export
+        your application manually and nothing is sent to Google. If we later move
+        to a tier or provider that contractually prohibits training on your
+        content, we&apos;ll say so here.
       </p>
 
       <h2>Who processes your data</h2>
@@ -62,7 +72,7 @@ export default function Privacy() {
         access, correct, and export your data — same address.
       </p>
 
-      <p className="text-xs text-stone">Last updated: 18 August 2026.</p>
+      <p className="text-xs text-stone">Last updated: 5 September 2026.</p>
     </LegalShell>
   );
 }
