@@ -12,7 +12,10 @@ import { atsCheck } from "@/lib/ats";
 import { extractText } from "@/lib/extract-text";
 import { fileToResizedDataUrl } from "@/lib/image";
 import { maybeImportDemoData } from "@/lib/import-demo";
-import type { Application, AtsReport, Contact, Fit, FitLevel, Resume } from "@/lib/types";
+import {
+  FUNNEL, OPEN_STATUSES, STATUS_LABEL, STATUS_ORDER, funnelCounts, isQuiet, statusOf,
+} from "@/lib/tracker";
+import type { AppStatus, Application, AtsReport, Contact, Fit, FitLevel, GroundingReview, InterviewPrep, Resume, UpskillPlan } from "@/lib/types";
 
 const DEMO_APPS_KEY = "forume-demo-applications";
 
@@ -199,7 +202,7 @@ export default function Dashboard() {
           <PageHeader tab={tab} />
           {tab === "new" && <NewApplication session={session} />}
           {tab === "profile" && <Profile session={session} />}
-          {tab === "history" && <History onOpen={() => setTab("new")} />}
+          {tab === "history" && <Tracker onOpen={() => setTab("new")} />}
         </div>
       </section>
     </main>
@@ -209,7 +212,7 @@ export default function Dashboard() {
 const NAV: { id: Tab; label: string; hint: string }[] = [
   { id: "new", label: "New application", hint: "Paste a job, pull a proof" },
   { id: "profile", label: "Your sources", hint: "Resumes, notes, contact" },
-  { id: "history", label: "Archive", hint: "Everything you've generated" },
+  { id: "history", label: "Tracker", hint: "Every application & outcome" },
 ];
 
 const HEADERS: Record<Tab, { kicker: string; title: string; note: string }> = {
@@ -224,9 +227,9 @@ const HEADERS: Record<Tab, { kicker: string; title: string; note: string }> = {
     note: "Everything generated is drawn from the documents and details stored here.",
   },
   history: {
-    kicker: "The archive",
-    title: "Every proof you've pulled.",
-    note: "Reopen, reprint, or discard past applications.",
+    kicker: "The tracker",
+    title: "Every application, one board.",
+    note: "Move each role through the funnel — applied, interviewing, offer — and catch the ones going quiet.",
   },
 };
 
@@ -1416,11 +1419,17 @@ function Profile({ session }: { session: Session | DemoSession }) {
   );
 }
 
-/* ---------------- history ---------------- */
+/* ---------------- tracker ---------------- */
 
-function History({ onOpen }: { onOpen: () => void }) {
+type TrackFilter = "all" | "open" | "followup";
+
+function Tracker({ onOpen }: { onOpen: () => void }) {
   const supabase = supabaseBrowser();
   const [apps, setApps] = useState<Application[]>([]);
+  const [filter, setFilter] = useState<TrackFilter>("all");
+  const [open, setOpen] = useState<{ id: number; kind: "prep" | "upskill" | "review" } | null>(null);
+  const toggle = (id: number, kind: "prep" | "upskill" | "review") =>
+    setOpen(open && open.id === id && open.kind === kind ? null : { id, kind });
 
   const load = useCallback(async () => {
     const demoSession = getDemoSession();
@@ -1429,66 +1438,394 @@ function History({ onOpen }: { onOpen: () => void }) {
       setApps(stored ? JSON.parse(stored) : []);
       return;
     }
-
     const { data } = await supabase
       .from("applications")
-      .select("id, company, role, jd, resume, cover_letter, ats, template, show_photo, is_demo, created_at")
+      .select(
+        "id, company, role, jd, resume, cover_letter, ats, template, show_photo, is_demo, created_at, status, job_url, notes, applied_at, last_activity_at, follow_up_at",
+      )
       .order("id", { ascending: false });
     setApps((data as Application[]) ?? []);
   }, [supabase]);
 
   useEffect(() => { load(); }, [load]);
 
+  const persistDemo = (next: Application[]) => {
+    if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-applications", JSON.stringify(next));
+  };
+
+  async function setStatus(a: Application, status: AppStatus) {
+    const now = new Date().toISOString();
+    const patch: Partial<Application> = { status, last_activity_at: now };
+    if (status === "applied" && !a.applied_at) patch.applied_at = now;
+    const next = apps.map((x) => (x.id === a.id ? { ...x, ...patch } : x));
+    setApps(next);
+    if (getDemoSession()) { persistDemo(next); return; }
+    await supabase.from("applications").update(patch).eq("id", a.id);
+  }
+
+  async function remove(a: Application) {
+    if (!confirm("Delete this application?")) return;
+    const next = apps.filter((x) => x.id !== a.id);
+    setApps(next);
+    if (getDemoSession()) { persistDemo(next); return; }
+    await supabase.from("applications").delete().eq("id", a.id);
+  }
+
+  const counts = funnelCounts(apps);
+  const quiet = apps.filter(isQuiet);
+  const shown = apps.filter((a) => {
+    if (filter === "open") return OPEN_STATUSES.includes(statusOf(a));
+    if (filter === "followup") return isQuiet(a);
+    return true;
+  });
+
   return (
     <div className="max-w-3xl">
-      <div className="rounded-sm border border-rule bg-paper p-6">
-        <h2 className="text-xs font-bold uppercase tracking-[0.22em] text-crimson border-b border-rule pb-2 mb-4">
-          Past applications
-        </h2>
+      {/* the funnel */}
+      <div className="mb-6 grid grid-cols-3 gap-3 sm:grid-cols-5">
+        {FUNNEL.map((s) => (
+          <div key={s} className="rounded-sm border border-rule bg-paper px-3 py-4 text-center">
+            <div className="font-display text-3xl leading-none">{counts[s] ?? 0}</div>
+            <div className="mt-1.5 text-[0.6rem] font-bold uppercase tracking-[0.14em] text-stone">{STATUS_LABEL[s]}</div>
+          </div>
+        ))}
+      </div>
+
+      {quiet.length > 0 && (
+        <div className="mb-5 rounded-sm border border-amber bg-amber/10 px-4 py-3 text-sm">
+          <b>{quiet.length}</b> application{quiet.length > 1 ? "s have" : " has"} gone quiet (10+ days).{" "}
+          <button onClick={() => setFilter("followup")} className="font-semibold text-crimson hover:underline">
+            Review for follow-up →
+          </button>
+        </div>
+      )}
+
+      <div className="mb-4 flex flex-wrap gap-2 text-sm">
+        {([
+          ["all", "All"],
+          ["open", "In progress"],
+          ["followup", "Needs follow-up"],
+        ] as [TrackFilter, string][]).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setFilter(id)}
+            className={`rounded-md px-3.5 py-1.5 font-medium transition-colors ${filter === id ? "bg-ink text-paper" : "text-stone hover:text-ink"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="rounded-sm border border-rule bg-paper">
         <ul className="divide-y divide-rule">
-          {apps.length === 0 && (
-            <li className="py-3 text-sm text-stone">
-              Nothing yet — generate your first tailored application.
+          {shown.length === 0 && (
+            <li className="p-6 text-sm text-stone">
+              {apps.length === 0
+                ? "Nothing yet — generate your first tailored application."
+                : "No applications in this view."}
             </li>
           )}
-          {apps.map((a) => (
-            <li key={a.id} className="py-3.5 flex items-center gap-4">
-              <button
-                onClick={() => { setOpenedApplication(a); onOpen(); }}
-                className="min-w-0 flex-1 text-left text-sm hover:text-crimson"
-              >
-                <span className="block font-medium">
-                  {[a.role, a.company].filter(Boolean).join(" @ ") || "Untitled application"}
-                  {a.is_demo && <span className="ml-2 text-xs text-amber">(sample)</span>}
-                </span>
-                {a.jd && (
-                  <span className="mt-0.5 block truncate text-xs font-normal text-stone">{a.jd}</span>
-                )}
-              </button>
-              <span className="text-xs text-stone">
-                {new Date(a.created_at).toLocaleDateString()}
-              </span>
-              <button
-                onClick={async () => {
-                  if (!confirm("Delete this application?")) return;
-                  const demoSession = getDemoSession();
-                  if (demoSession) {
-                    const nextApps = apps.filter((app) => app.id !== a.id);
-                    if (typeof window !== "undefined") window.localStorage.setItem("forume-demo-applications", JSON.stringify(nextApps));
-                    setApps(nextApps);
-                    return;
-                  }
-                  await supabase.from("applications").delete().eq("id", a.id);
-                  load();
-                }}
-                className="text-stone hover:text-amber text-sm"
-              >
-                ✕
-              </button>
+          {shown.map((a) => (
+            <li key={a.id} className="p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => { setOpenedApplication(a); onOpen(); }}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="block truncate text-sm font-medium hover:text-crimson">
+                    {[a.role, a.company].filter(Boolean).join(" @ ") || "Untitled application"}
+                    {a.is_demo && <span className="ml-2 text-xs text-amber">(sample)</span>}
+                    {isQuiet(a) && <span className="ml-2 text-xs text-amber">• follow up</span>}
+                  </span>
+                  <span className="mt-0.5 block text-xs text-stone">
+                    {new Date(a.created_at).toLocaleDateString()}
+                  </span>
+                </button>
+                <button
+                  onClick={() => toggle(a.id, "prep")}
+                  className={`text-xs font-medium hover:text-ink ${open?.id === a.id && open.kind === "prep" ? "text-ink" : "text-stone"}`}
+                >
+                  Interview prep
+                </button>
+                <button
+                  onClick={() => toggle(a.id, "upskill")}
+                  className={`text-xs font-medium hover:text-ink ${open?.id === a.id && open.kind === "upskill" ? "text-ink" : "text-stone"}`}
+                >
+                  Skill gaps
+                </button>
+                <button
+                  onClick={() => toggle(a.id, "review")}
+                  className={`text-xs font-medium hover:text-ink ${open?.id === a.id && open.kind === "review" ? "text-ink" : "text-stone"}`}
+                >
+                  Fact-check
+                </button>
+                <select
+                  value={statusOf(a)}
+                  onChange={(e) => setStatus(a, e.target.value as AppStatus)}
+                  aria-label="Application status"
+                  className="rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ink"
+                >
+                  {STATUS_ORDER.map((s) => (
+                    <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                  ))}
+                </select>
+                <button onClick={() => remove(a)} aria-label="Delete" className="text-stone hover:text-amber text-sm">
+                  ✕
+                </button>
+              </div>
+              {open?.id === a.id && open.kind === "prep" && <InterviewPrepPanel app={a} />}
+              {open?.id === a.id && open.kind === "upskill" && <UpskillPanel app={a} />}
+              {open?.id === a.id && open.kind === "review" && <ReviewPanel app={a} />}
             </li>
           ))}
         </ul>
       </div>
+    </div>
+  );
+}
+
+function InterviewPrepPanel({ app }: { app: Application }) {
+  const supabase = supabaseBrowser();
+  const [prep, setPrep] = useState<InterviewPrep | null>(app.interview_prep ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function generate(force = false) {
+    setBusy(true);
+    setErr("");
+    try {
+      const demo = getDemoSession();
+      let token = "";
+      let documents: { name: string; content: string }[] = [];
+      if (demo) {
+        token = demo.access_token;
+        try { documents = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]"); } catch {}
+      } else {
+        const { data } = await supabase.auth.getSession();
+        token = data.session?.access_token ?? "";
+      }
+      const res = await fetch("/api/interview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(demo ? { "X-Demo-Email": demo.user.email ?? "" } : {}),
+        },
+        body: JSON.stringify(
+          demo
+            ? { jd: app.jd, company: app.company, role: app.role, resume: app.resume, documents, force }
+            : { applicationId: app.id, force },
+        ),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      setPrep(data.prep);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const H = ({ children }: { children: React.ReactNode }) => (
+    <p className="mb-1.5 text-xs font-bold uppercase tracking-[0.16em] text-crimson">{children}</p>
+  );
+
+  return (
+    <div className="mt-3 rounded-sm border border-rule bg-linen p-4">
+      {!prep && !busy && (
+        <button
+          onClick={() => generate(false)}
+          className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-paper transition-colors hover:bg-crimson"
+        >
+          Generate interview prep
+        </button>
+      )}
+      {busy && <p className="text-sm text-stone">Preparing — grounded in your real experience…</p>}
+      {err && <p className="rounded-md border border-amber bg-amber/10 px-3 py-2 text-sm">{err}</p>}
+      {prep && !busy && (
+        <div className="space-y-5 text-sm leading-relaxed">
+          <div>
+            <H>Likely questions</H>
+            <ul className="space-y-2">
+              {prep.likely_questions.map((q, i) => (
+                <li key={i}><span className="font-semibold">{q.q}</span> <span className="text-stone">— {q.why}</span></li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <H>STAR answers, from your experience</H>
+            <div className="space-y-3">
+              {prep.star_answers.map((s, i) => (
+                <div key={i}><p className="font-semibold">{s.prompt}</p><p className="text-stone">{s.answer}</p></div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <H>Questions to ask them</H>
+            <ul className="list-disc space-y-1 pl-5 text-stone">
+              {prep.questions_to_ask.map((q, i) => <li key={i}>{q}</li>)}
+            </ul>
+          </div>
+          <div>
+            <H>Your angle</H>
+            <p className="text-stone">{prep.company_angle}</p>
+          </div>
+          <button onClick={() => generate(true)} className="text-xs text-stone underline hover:text-ink">Regenerate</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UpskillPanel({ app }: { app: Application }) {
+  const supabase = supabaseBrowser();
+  const [plan, setPlan] = useState<UpskillPlan | null>(app.upskill_plan ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function generate(force = false) {
+    setBusy(true);
+    setErr("");
+    try {
+      const demo = getDemoSession();
+      let token = "";
+      let documents: { name: string; content: string }[] = [];
+      if (demo) {
+        token = demo.access_token;
+        try { documents = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]"); } catch {}
+      } else {
+        const { data } = await supabase.auth.getSession();
+        token = data.session?.access_token ?? "";
+      }
+      const res = await fetch("/api/upskill", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(demo ? { "X-Demo-Email": demo.user.email ?? "" } : {}),
+        },
+        body: JSON.stringify(
+          demo ? { jd: app.jd, resume: app.resume, documents, force } : { applicationId: app.id, force },
+        ),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      setPlan(data.plan);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const pri: Record<string, string> = { high: "text-crimson", medium: "text-amber", low: "text-stone" };
+
+  return (
+    <div className="mt-3 rounded-sm border border-rule bg-linen p-4">
+      {!plan && !busy && (
+        <button
+          onClick={() => generate(false)}
+          className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-paper transition-colors hover:bg-crimson"
+        >
+          Find my skill gaps
+        </button>
+      )}
+      {busy && <p className="text-sm text-stone">Comparing your background to the role…</p>}
+      {err && <p className="rounded-md border border-amber bg-amber/10 px-3 py-2 text-sm">{err}</p>}
+      {plan && !busy && (
+        <div className="space-y-4 text-sm leading-relaxed">
+          <p className="text-stone">{plan.summary}</p>
+          <ul className="space-y-3">
+            {plan.gaps.map((g, i) => (
+              <li key={i} className="border-l-2 border-rule pl-3">
+                <p className="font-semibold">
+                  {g.skill}
+                  <span className={`ml-2 text-[0.6rem] font-bold uppercase tracking-[0.14em] ${pri[g.priority] ?? "text-stone"}`}>{g.priority}</span>
+                </p>
+                <p className="text-stone">{g.why}</p>
+                <p className="mt-0.5"><span className="font-medium">Learn:</span> <span className="text-stone">{g.resource}</span></p>
+              </li>
+            ))}
+          </ul>
+          <button onClick={() => generate(true)} className="text-xs text-stone underline hover:text-ink">Regenerate</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewPanel({ app }: { app: Application }) {
+  const supabase = supabaseBrowser();
+  const [review, setReview] = useState<GroundingReview | null>(app.grounding_review ?? null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  async function run(force = false) {
+    setBusy(true);
+    setErr("");
+    try {
+      const demo = getDemoSession();
+      let token = "";
+      let documents: { name: string; content: string }[] = [];
+      if (demo) {
+        token = demo.access_token;
+        try { documents = JSON.parse(window.localStorage.getItem("forume-demo-docs") ?? "[]"); } catch {}
+      } else {
+        const { data } = await supabase.auth.getSession();
+        token = data.session?.access_token ?? "";
+      }
+      const res = await fetch("/api/review", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          ...(demo ? { "X-Demo-Email": demo.user.email ?? "" } : {}),
+        },
+        body: JSON.stringify(demo ? { resume: app.resume, documents, force } : { applicationId: app.id, force }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      setReview(data.review);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-3 rounded-sm border border-rule bg-linen p-4">
+      {!review && !busy && (
+        <button
+          onClick={() => run(false)}
+          className="rounded-md bg-ink px-4 py-2 text-sm font-semibold text-paper transition-colors hover:bg-crimson"
+        >
+          Fact-check against my documents
+        </button>
+      )}
+      {busy && <p className="text-sm text-stone">Checking every claim against your sources…</p>}
+      {err && <p className="rounded-md border border-amber bg-amber/10 px-3 py-2 text-sm">{err}</p>}
+      {review && !busy && (
+        <div className="space-y-3 text-sm leading-relaxed">
+          {review.verdict === "clean" ? (
+            <p className="flex items-center gap-2"><span className="font-bold text-pine">✓</span><span>{review.note}</span></p>
+          ) : (
+            <>
+              <p className="flex items-center gap-2"><span className="font-bold text-amber">!</span><span>{review.note}</span></p>
+              <ul className="space-y-2">
+                {review.flags.map((f, i) => (
+                  <li key={i} className="border-l-2 border-amber pl-3">
+                    <p className="font-semibold">{f.claim}</p>
+                    <p className="text-stone">{f.issue}</p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+          <button onClick={() => run(true)} className="text-xs text-stone underline hover:text-ink">Re-check</button>
+        </div>
+      )}
     </div>
   );
 }

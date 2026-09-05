@@ -51,6 +51,32 @@ export type Contact = {
   photo?: string;
 };
 
+/* Where an application sits in the search funnel. */
+export type AppStatus =
+  | "saved" | "drafted" | "applied" | "interviewing"
+  | "offer" | "hired" | "rejected" | "no_response";
+
+/* On-demand interview prep, grounded in the candidate's own background. */
+export type InterviewPrep = {
+  likely_questions: { q: string; why: string }[];
+  star_answers: { prompt: string; answer: string }[];
+  questions_to_ask: string[];
+  company_angle: string;
+};
+
+/* On-demand learning plan closing the honest gaps for a role. */
+export type UpskillPlan = {
+  summary: string;
+  gaps: { skill: string; priority: "high" | "medium" | "low"; why: string; resource: string }[];
+};
+
+/* On-demand grounding audit: résumé claims not clearly supported by the sources. */
+export type GroundingReview = {
+  verdict: "clean" | "flags";
+  note: string;
+  flags: { claim: string; issue: string }[];
+};
+
 export type Application = {
   id: number;
   company: string;
@@ -63,4 +89,15 @@ export type Application = {
   show_photo?: boolean;
   is_demo: boolean;
   created_at: string;
+  /* tracker fields (added by db/application-tracker.sql; optional so pre-migration
+     rows and demo apps still type-check) */
+  status?: AppStatus;
+  job_url?: string | null;
+  notes?: string | null;
+  applied_at?: string | null;
+  last_activity_at?: string | null;
+  follow_up_at?: string | null;
+  interview_prep?: InterviewPrep | null;
+  upskill_plan?: UpskillPlan | null;
+  grounding_review?: GroundingReview | null;
 };
