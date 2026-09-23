@@ -164,17 +164,5 @@ html.lenis, html.lenis body { height: auto; }
   .arc-score { animation: none; }
 }
 
-/* ---------- print: only the printable sheet ---------- */
-@media print {
-  body * { visibility: hidden; }
-  .print-sheet, .print-sheet * { visibility: visible; }
-  .print-sheet {
-    position: absolute; inset: 0;
-    width: 100%; box-shadow: none !important; border: none !important;
-    /* keep dark headers and the CV photo rendering in print/PDF */
-    print-color-adjust: exact;
-    -webkit-print-color-adjust: exact;
-  }
-  .cv-photo { break-inside: avoid; }
-  @page { size: letter; margin: 0.5in; }
-}
+/* Print/PDF is no longer done via window.print(); the résumé and cover letter
+   are exported as vector PDFs by /api/pdf (headless Chromium → src/lib/pdf). */

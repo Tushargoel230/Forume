@@ -693,6 +693,44 @@ function ResultPanel({
   regenningCover: boolean;
 }) {
   const showPhoto = result.show_photo ?? true;
+  const [downloading, setDownloading] = useState<null | "resume" | "cover">(null);
+  const [downloadErr, setDownloadErr] = useState("");
+
+  // Save as PDF → POST the sheet data to /api/pdf (headless-Chromium vector PDF)
+  // and download the returned blob directly. No window.print, no print dialog.
+  async function downloadPdf(kind: "resume" | "cover") {
+    setDownloadErr("");
+    setDownloading(kind);
+    try {
+      const payload =
+        kind === "resume"
+          ? { kind, resume: result.resume, contact, template: result.template, showPhoto }
+          : { kind, cover: result.cover_letter ?? "", contact };
+      const res = await fetch("/api/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error ?? "Export failed.");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${contact.name || "Forume"} - ${kind === "resume" ? "Resume" : "Cover Letter"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } catch (e) {
+      setDownloadErr(e instanceof Error ? e.message : "Export failed.");
+    } finally {
+      setDownloading(null);
+    }
+  }
+
   return (
     <div className="cropmarks border border-rule bg-paper shadow-[0_14px_40px_-24px_rgba(31,33,36,0.3)]">
       {result.is_demo && (
@@ -747,11 +785,17 @@ function ResultPanel({
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
+          {downloadErr && <span className="text-xs text-crimson">{downloadErr}</span>}
           <button
-            onClick={() => window.print()}
-            className="rounded-md border border-ink px-4 py-1.5 text-sm font-semibold hover:bg-ink hover:text-paper transition-colors"
+            onClick={() => downloadPdf(resultTab === "cover" ? "cover" : "resume")}
+            disabled={downloading !== null}
+            className="rounded-md border border-ink px-4 py-1.5 text-sm font-semibold hover:bg-ink hover:text-paper transition-colors disabled:opacity-50"
           >
-            Save as PDF
+            {downloading
+              ? "Preparing…"
+              : resultTab === "cover"
+                ? "Save cover as PDF"
+                : "Save as PDF"}
           </button>
         </div>
       </div>
