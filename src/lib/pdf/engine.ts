@@ -1,6 +1,6 @@
 import "server-only";
 import puppeteer, { type Browser } from "puppeteer-core";
-import chromium from "@sparticuz/chromium-min";
+import chromium from "@sparticuz/chromium";
 
 /*
  * PDF engine — Option A: a headless Chromium renders the real /print page (the
@@ -13,11 +13,12 @@ import chromium from "@sparticuz/chromium-min";
  * client stay exactly as they are.
  *
  * Pinned, protocol-matched versions (do NOT bump one without the other):
- *   puppeteer-core          25.11.0  → targets Chromium 153.0.8010.36
- *   @sparticuz/chromium-min 153.0.0  → Chromium 153
- * In production the Chromium binary is fetched from CHROMIUM_TAR_URL — stash the
- * chromium-v153.0.0 pack (github.com/Sparticuz/chromium/releases) in Vercel Blob
- * so the export can never break when an upstream host or version drifts.
+ *   puppeteer-core      25.11.0  → targets Chromium 153.0.8010.36
+ *   @sparticuz/chromium 153.0.0  → Chromium 153 (FULL package: bundles the binary)
+ * The full package ships the Chromium binary in its bin/, so on Vercel we call
+ * executablePath() with NO argument and Next output file tracing ships bin/ with
+ * the function (see next.config.ts). No remote pack / Vercel Blob / env URL — the
+ * -min variant's remote-download path silently fell back to a missing local bin.
  */
 
 function localChrome(): string {
@@ -42,7 +43,7 @@ async function launch(): Promise<Browser> {
       args: ["--no-sandbox", "--disable-setuid-sandbox"],
     });
   }
-  const executablePath = await chromium.executablePath(process.env.CHROMIUM_TAR_URL);
+  const executablePath = await chromium.executablePath();
   return puppeteer.launch({
     executablePath,
     args: chromium.args,
