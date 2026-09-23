@@ -77,6 +77,12 @@ export type GroundingReview = {
   flags: { claim: string; issue: string }[];
 };
 
+/* Payload POSTed to /api/pdf and injected into the /print page. Kept here (no
+   server deps) so the client, the route, and the print page all share one shape. */
+export type PdfPayload =
+  | { kind: "resume"; resume: Resume; contact: Contact; template: string; showPhoto: boolean }
+  | { kind: "cover"; cover: string; contact: Contact };
+
 export type Application = {
   id: number;
   company: string;
