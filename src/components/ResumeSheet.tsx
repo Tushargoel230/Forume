@@ -1,4 +1,5 @@
 import type { Contact, Resume } from "@/lib/types";
+import { sectionLabels, type SectionLabels } from "@/lib/languages";
 
 /* Six web templates, all single-column real text — parser-safe.
    Keep ids in sync with TEMPLATES (used by the dashboard select). */
@@ -89,14 +90,18 @@ export function ResumeSheet({
   contact,
   template,
   showPhoto = true,
+  language = "en",
 }: {
   resume: Resume;
   contact: Contact;
   template: string;
   showPhoto?: boolean;
+  /** output language — localizes section headings; content is already in it */
+  language?: string;
 }) {
+  const L = sectionLabels(language);
   if (template === "lebenslauf") {
-    return <LebenslaufSheet resume={resume} contact={contact} showPhoto={showPhoto} />;
+    return <LebenslaufSheet resume={resume} contact={contact} showPhoto={showPhoto} L={L} />;
   }
   const t = THEMES[template] ?? THEMES.slate;
   const compact = template === "compact";
@@ -109,14 +114,14 @@ export function ResumeSheet({
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={contact.photo}
-        alt={contact.name || "Profile photo"}
+        alt={contact.name || L.photoAlt}
         className={`cv-photo shrink-0 w-24 aspect-[3.5/4.5] rounded-md object-cover break-inside-avoid ${t.photo ?? ""}`}
       />
     ) : null;
 
   const textBlock = (
     <>
-      <h1 className={t.name}>{contact.name || "Your Name"}</h1>
+      <h1 className={t.name}>{contact.name || L.yourName}</h1>
       {resume.headline && <p className={t.headline}>{resume.headline}</p>}
       <p className={`mt-2 text-[12px] ${t.contact}`}>{contactBits.join("  ·  ")}</p>
     </>
@@ -140,13 +145,13 @@ export function ResumeSheet({
 
       <div className={compact ? "px-8 pb-7 pt-2" : "px-10 pb-10 pt-4"}>
         {resume.summary && (
-          <Section title="Summary" t={t} compact={compact}>
+          <Section title={L.summary} t={t} compact={compact}>
             <p>{resume.summary}</p>
           </Section>
         )}
 
         {resume.skills?.length > 0 && (
-          <Section title="Skills" t={t} compact={compact}>
+          <Section title={L.skills} t={t} compact={compact}>
             {resume.skills.map((g) => (
               <p key={g.category} className="mb-0.5">
                 <b className="font-semibold">{g.category}:</b> {g.items.join(", ")}
@@ -156,7 +161,7 @@ export function ResumeSheet({
         )}
 
         {resume.experience?.length > 0 && (
-          <Section title="Experience" t={t} compact={compact}>
+          <Section title={L.experience} t={t} compact={compact}>
             {resume.experience.map((j, i) => (
               <div key={i} className={`${compact ? "mb-2" : "mb-3"} break-inside-avoid`}>
                 <div className="flex justify-between items-baseline gap-4">
@@ -177,7 +182,7 @@ export function ResumeSheet({
         )}
 
         {resume.projects?.length > 0 && (
-          <Section title="Projects" t={t} compact={compact}>
+          <Section title={L.projects} t={t} compact={compact}>
             {resume.projects.map((p, i) => (
               <div key={i} className={`${compact ? "mb-1.5" : "mb-2.5"} break-inside-avoid`}>
                 <p>
@@ -195,7 +200,7 @@ export function ResumeSheet({
         )}
 
         {resume.education?.length > 0 && (
-          <Section title="Education" t={t} compact={compact}>
+          <Section title={L.education} t={t} compact={compact}>
             {resume.education.map((e, i) => (
               <div key={i} className="mb-1.5 flex justify-between items-baseline gap-4">
                 <p>
@@ -210,7 +215,7 @@ export function ResumeSheet({
         )}
 
         {resume.certifications?.length > 0 && (
-          <Section title="Certifications" t={t} compact={compact}>
+          <Section title={L.certifications} t={t} compact={compact}>
             <ul className="list-disc ml-5 space-y-0.5">
               {resume.certifications.map((c, i) => (
                 <li key={i}>{c}</li>
@@ -251,14 +256,15 @@ function Section({
 
 /* German-style Lebenslauf: a dates-left tabular CV with a top-right photo and a
    personal-details block — the layout German recruiters expect (and no US-market
-   competitor renders natively). Section headings are in German; body content
-   stays in whatever language the resume was written in. */
+   competitor renders natively). Headings follow the output language (German
+   reproduces the original Lebenslauf/Profil/Berufserfahrung/… set exactly). */
 function LebenslaufSheet({
-  resume, contact, showPhoto,
+  resume, contact, showPhoto, L,
 }: {
   resume: Resume;
   contact: Contact;
   showPhoto: boolean;
+  L: SectionLabels;
 }) {
   const contactBits = [
     contact.email, contact.phone, contact.location, contact.linkedin, contact.website,
@@ -268,8 +274,8 @@ function LebenslaufSheet({
     <div className="print-sheet bg-white text-[#1c1e21] shadow-[0_16px_44px_-18px_rgba(34,39,31,0.4)] border border-rule text-[13px] leading-[1.5]">
       <header className="flex items-start justify-between gap-6 border-b-2 border-[#1c1e21] px-10 pt-10 pb-5">
         <div className="min-w-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#8a8d91]">Lebenslauf</p>
-          <h1 className="mt-1 font-display text-[30px] leading-tight tracking-[0.02em]">{contact.name || "Ihr Name"}</h1>
+          <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-[#8a8d91]">{L.cvTitle}</p>
+          <h1 className="mt-1 font-display text-[30px] leading-tight tracking-[0.02em]">{contact.name || L.yourName}</h1>
           {resume.headline && <p className="mt-1 text-[#555] italic font-display">{resume.headline}</p>}
           <p className="mt-3 text-[12px] text-[#666] leading-relaxed">{contactBits.join("  ·  ")}</p>
         </div>
@@ -277,7 +283,7 @@ function LebenslaufSheet({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={contact.photo}
-            alt={contact.name || "Bewerbungsfoto"}
+            alt={contact.name || L.photoAlt}
             className="cv-photo shrink-0 w-28 aspect-[3.5/4.5] rounded-sm object-cover border border-[#1c1e21]/25 break-inside-avoid"
           />
         )}
@@ -285,13 +291,13 @@ function LebenslaufSheet({
 
       <div className="px-10 pb-10 pt-5">
         {resume.summary && (
-          <LlSection title="Profil">
+          <LlSection title={L.profile}>
             <p>{resume.summary}</p>
           </LlSection>
         )}
 
         {resume.experience?.length > 0 && (
-          <LlSection title="Berufserfahrung">
+          <LlSection title={L.cvExperience}>
             {resume.experience.map((j, i) => (
               <LlRow key={i} dates={j.dates}>
                 <p>
@@ -307,7 +313,7 @@ function LebenslaufSheet({
         )}
 
         {resume.projects?.length > 0 && (
-          <LlSection title="Projekte">
+          <LlSection title={L.cvProjects}>
             {resume.projects.map((p, i) => (
               <LlRow key={i} dates={p.tech}>
                 <p><b className="font-semibold">{p.name}</b></p>
@@ -320,7 +326,7 @@ function LebenslaufSheet({
         )}
 
         {resume.education?.length > 0 && (
-          <LlSection title="Ausbildung">
+          <LlSection title={L.cvEducation}>
             {resume.education.map((e, i) => (
               <LlRow key={i} dates={e.dates}>
                 <p>
@@ -334,7 +340,7 @@ function LebenslaufSheet({
         )}
 
         {resume.skills?.length > 0 && (
-          <LlSection title="Kenntnisse">
+          <LlSection title={L.cvSkills}>
             {resume.skills.map((g) => (
               <LlRow key={g.category} dates={g.category}>
                 <p>{g.items.join(", ")}</p>
@@ -344,7 +350,7 @@ function LebenslaufSheet({
         )}
 
         {resume.certifications?.length > 0 && (
-          <LlSection title="Zertifikate">
+          <LlSection title={L.cvCertificates}>
             <LlRow dates="">
               <ul className="list-disc ml-5 space-y-0.5">
                 {resume.certifications.map((c, i) => <li key={i}>{c}</li>)}

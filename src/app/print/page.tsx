@@ -45,6 +45,7 @@ export default function PrintPage() {
             contact={payload.contact}
             template={payload.template}
             showPhoto={payload.showPhoto}
+            language={payload.language}
           />
         )}
         {payload?.kind === "cover" && (

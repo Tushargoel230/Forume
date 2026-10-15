@@ -99,7 +99,7 @@ export async function POST(request: Request) {
   let modelUsed = cfg.model;
   let usedFallback = false;
   try {
-    fixed = coerceResume(extractJson(await chat(cfg, prompts.FIX_SYSTEM, user, true, 0.3)));
+    fixed = coerceResume(extractJson(await chat(cfg, prompts.withLanguage(prompts.FIX_SYSTEM, language), user, true, 0.3)));
   } catch (e) {
     const fb = fallbackConfig(cfg);
     if (!fb) {
@@ -107,7 +107,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: friendlyLlmError(e) }, { status: 502 });
     }
     try {
-      fixed = coerceResume(extractJson(await chat(fb, prompts.FIX_SYSTEM, user, true, 0.3)));
+      fixed = coerceResume(extractJson(await chat(fb, prompts.withLanguage(prompts.FIX_SYSTEM, language), user, true, 0.3)));
       modelUsed = fb.model;
       usedFallback = true;
     } catch (e2) {

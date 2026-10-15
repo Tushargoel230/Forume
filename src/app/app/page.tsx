@@ -60,6 +60,22 @@ function clearDemoSession() {
 
 /** Stable per-browser id so demo limits are per-device, not per-IP
     (many students share one campus IP). Created once, kept in localStorage. */
+const LANGUAGE_KEY = "forume-language";
+
+function readStoredLanguage(): string {
+  try {
+    const v = typeof window !== "undefined" ? window.localStorage.getItem(LANGUAGE_KEY) : null;
+    if (v && LANGUAGES.some((l) => l.code === v)) return v;
+  } catch {}
+  return "en";
+}
+
+function rememberLanguage(code: string) {
+  try {
+    window.localStorage.setItem(LANGUAGE_KEY, code);
+  } catch {}
+}
+
 function demoDeviceId(): string {
   if (typeof window === "undefined") return "";
   let id = window.localStorage.getItem("forume-demo-id");
@@ -272,7 +288,10 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
   const [company, setCompany] = useState(openedApplication?.company ?? prefillRef.current?.company ?? "");
   const [role, setRole] = useState(openedApplication?.role ?? prefillRef.current?.role ?? "");
   const [template, setTemplate] = useState(openedApplication?.template ?? "slate");
-  const [language, setLanguage] = useState(openedApplication?.language ?? "en");
+  // default = the language last used (localStorage), unless re-opening a saved application
+  const [language, setLanguage] = useState(() => openedApplication?.language ?? readStoredLanguage());
+  // target language while a one-call translation is in flight (null = idle)
+  const [pendingLang, setPendingLang] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [regenningCover, setRegenningCover] = useState(false);
@@ -399,10 +418,8 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
     }
   }
 
-  async function generate(langArg?: string) {
-    // langArg lets the ResultPanel language switch re-tailor immediately without
-    // waiting for the language state update to flush through the closure.
-    const lang = typeof langArg === "string" ? langArg : language;
+  async function generate() {
+    const lang = language;
     if (!jd.trim()) {
       setError("Paste a job description first.");
       return;
@@ -442,6 +459,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
       };
       setResult(app);
       setResultTab("resume");
+      rememberLanguage(lang);
       // signed-in rows are saved server-side; the demo archive lives here
       if (isDemo) writeDemoApp(app);
     } catch (e) {
@@ -468,6 +486,42 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
           show_photo: updated.show_photo ?? true,
         })
         .eq("id", updated.id);
+    }
+  }
+
+  /** Switch the output language of the SAME application with one translation
+      call — no new Tracker entry / demo id, nothing re-derived from the sources. */
+  async function translateResult(code: string) {
+    if (!result?.resume || !result.ats) return;
+    if (code === (result.language ?? "en")) return;
+    setPendingLang(code);
+    setError("");
+    try {
+      const isDemo = session.access_token.startsWith("demo-");
+      const res = await fetch("/api/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+          ...(isDemo ? { "X-Demo-Email": session.user.email ?? "", "X-Demo-Id": demoDeviceId() } : {}),
+        },
+        body: JSON.stringify({
+          resume: result.resume, cover_letter: result.cover_letter ?? "", ats: result.ats,
+          contact: { ...contact, photo: undefined }, language: code,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `Error ${res.status}`);
+      await updateResult({
+        resume: data.resume, cover_letter: data.cover_letter, ats: data.ats, language: data.language,
+      });
+      setLanguage(code);
+      rememberLanguage(code);
+    } catch (e) {
+      // result.language was never changed, so the select snaps back on its own
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPendingLang(null);
     }
   }
 
@@ -576,6 +630,23 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
             placeholder="e.g. Robotics Software Engineer" className={inputCls} />
         </Field>
         <div className="mb-4">
+          <label className="block text-sm font-medium mb-1.5" htmlFor="resume-language">Resume language</label>
+          <select
+            id="resume-language"
+            value={language}
+            onChange={(e) => { setLanguage(e.target.value); rememberLanguage(e.target.value); }}
+            disabled={busy || pendingLang !== null}
+            className="rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink disabled:opacity-50"
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-stone">
+            Written for you in this language — your uploaded background stays untouched.
+          </p>
+        </div>
+        <div className="mb-4">
           <span className="block text-sm font-medium mb-1.5">Paste a job link</span>
           <div className="flex gap-2">
             <input
@@ -601,7 +672,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
             placeholder="Paste the full job description here…" className={inputCls} />
         </Field>
         <button
-          onClick={() => generate()}
+          onClick={generate}
           disabled={busy}
           className="w-full rounded-md bg-ink px-5 py-3.5 font-semibold text-paper hover:bg-crimson transition-colors disabled:opacity-50"
         >
@@ -616,7 +687,9 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         <ResultPanel
           result={result} contact={contact} resultTab={resultTab} setResultTab={setResultTab}
           onTemplateChange={(t) => { setTemplate(t); void updateResult({ template: t }); }}
-          onLanguageChange={(l) => { setLanguage(l); void generate(l); }}
+          onLanguageChange={(l) => void translateResult(l)}
+          languageValue={pendingLang ?? result.language ?? "en"}
+          translating={pendingLang !== null}
           regenerating={busy}
           onTogglePhoto={(v) => void updateResult({ show_photo: v })}
           onFix={fixAts} fixing={fixing} onSaveEdit={saveEditResume}
@@ -687,7 +760,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
 }
 
 function ResultPanel({
-  result, contact, resultTab, setResultTab, onTemplateChange, onLanguageChange, regenerating,
+  result, contact, resultTab, setResultTab, onTemplateChange, onLanguageChange, languageValue, translating, regenerating,
   onTogglePhoto, onFix, fixing, onSaveEdit,
   onSaveCover, onRegenCover, regenningCover,
 }: {
@@ -697,6 +770,8 @@ function ResultPanel({
   setResultTab: (t: ResultTab) => void;
   onTemplateChange: (t: string) => void;
   onLanguageChange: (code: string) => void;
+  languageValue: string;
+  translating: boolean;
   regenerating: boolean;
   onTogglePhoto: (v: boolean) => void;
   onFix: () => void;
@@ -718,7 +793,7 @@ function ResultPanel({
     try {
       const payload =
         kind === "resume"
-          ? { kind, resume: result.resume, contact, template: result.template, showPhoto }
+          ? { kind, resume: result.resume, contact, template: result.template, showPhoto, language: result.language ?? "en" }
           : { kind, cover: result.cover_letter ?? "", contact };
       const res = await fetch("/api/pdf", {
         method: "POST",
@@ -799,11 +874,12 @@ function ResultPanel({
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
+          {translating && <span className="text-xs text-stone">Translating…</span>}
           <select
-            value={result.language ?? "en"}
+            value={languageValue}
             onChange={(e) => onLanguageChange(e.target.value)}
-            disabled={regenerating || fixing}
-            title="Switch output language — re-tailors the resume & letter in that language (a fresh AI pass, not a reprint)"
+            disabled={translating || regenerating || fixing}
+            title="Translate this résumé & letter into another language — one AI pass, same application, facts unchanged"
             className="rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink disabled:opacity-50"
           >
             {LANGUAGES.map((l) => (
@@ -826,7 +902,7 @@ function ResultPanel({
       </div>
       <div className="p-5">
         {resultTab === "resume" && result.resume && (
-          <ResumeSheet resume={result.resume} contact={contact} template={result.template} showPhoto={showPhoto} />
+          <ResumeSheet resume={result.resume} contact={contact} template={result.template} showPhoto={showPhoto} language={result.language ?? "en"} />
         )}
         {resultTab === "cover" && (
           <CoverPanel

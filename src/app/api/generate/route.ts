@@ -37,17 +37,17 @@ async function runPipeline(
   const co = company || "(not specified)";
   const ro = role || "(see JD)";
 
-  const analysisRaw = await chat(cfg, prompts.ANALYSIS_SYSTEM,
+  const analysisRaw = await chat(cfg, prompts.withLanguage(prompts.ANALYSIS_SYSTEM, language),
     prompts.analysisUser(context, co, ro, jd, language), true);
   const analysis = extractJson<{ top_keywords?: string[]; fit?: string; fit_reasons?: string[] }>(analysisRaw);
   const analysisStr = JSON.stringify(analysis, null, 1);
 
-  const resumeRaw = await chat(cfg, prompts.RESUME_SYSTEM,
+  const resumeRaw = await chat(cfg, prompts.withLanguage(prompts.RESUME_SYSTEM, language),
     prompts.resumeUser(context, co, ro, jd, analysisStr, language), true);
   const resume = coerceResume(extractJson(resumeRaw));
 
   const cover = (
-    await chat(cfg, prompts.COVER_SYSTEM,
+    await chat(cfg, prompts.withLanguage(prompts.COVER_SYSTEM, language),
       prompts.coverUser(context, contact.name, co, ro, jd, analysisStr, language), false)
   ).trim();
 

@@ -90,7 +90,7 @@ export async function POST(request: Request) {
   let usedFallback = false;
   try {
     coverText = (
-      await chat(cfg, prompts.COVER_SYSTEM,
+      await chat(cfg, prompts.withLanguage(prompts.COVER_SYSTEM, language),
         prompts.coverUser(context, name, company || "(not specified)", role || "(see JD)", jd, steer, language), false)
     ).trim();
   } catch (e) {
@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     }
     try {
       coverText = (
-        await chat(fb, prompts.COVER_SYSTEM,
+        await chat(fb, prompts.withLanguage(prompts.COVER_SYSTEM, language),
           prompts.coverUser(context, name, company || "(not specified)", role || "(see JD)", jd, steer, language), false)
       ).trim();
       modelUsed = fb.model;

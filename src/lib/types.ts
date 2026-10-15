@@ -80,7 +80,7 @@ export type GroundingReview = {
 /* Payload POSTed to /api/pdf and injected into the /print page. Kept here (no
    server deps) so the client, the route, and the print page all share one shape. */
 export type PdfPayload =
-  | { kind: "resume"; resume: Resume; contact: Contact; template: string; showPhoto: boolean }
+  | { kind: "resume"; resume: Resume; contact: Contact; template: string; showPhoto: boolean; language?: string }
   | { kind: "cover"; cover: string; contact: Contact };
 
 export type Application = {
