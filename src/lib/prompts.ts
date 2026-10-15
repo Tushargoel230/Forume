@@ -1,3 +1,14 @@
+import { languageLabel } from "./languages";
+
+/** Appended to every *User builder: writes the generated VALUES in the target
+    language while keeping proper nouns (and the English JSON keys) untranslated.
+    Empty for English so existing behaviour is byte-for-byte unchanged. */
+const languageBlock = (language: string) => {
+  const label = languageLabel(language);
+  if (language === "en" || !language) return "";
+  return `\n\nWrite all generated content — headline, summary, skill labels, bullets, letter body, and any analysis keywords — in ${label}. Keep proper nouns exactly as given: company names, product names, programming languages, frameworks, libraries, tools, certifications, and job titles that are conventionally written in English (e.g. "JavaScript", "Kubernetes", "AWS", "Scrum Master") stay untranslated even though surrounding text is in ${label}. Use natural, idiomatic ${label} phrasing a native speaker in that country's job market would write — not a literal translation.`;
+};
+
 export const ANALYSIS_SYSTEM = `You are an expert career strategist and technical recruiter. You analyze how a candidate's real background maps onto a specific job description. You are precise, honest, and never invent experience the candidate does not have.
 
 Assign the "fit" verdict with this rubric — judge the PERSON against the role's hard requirements (years, seniority, must-have skills, domain), not the wording of any draft:
@@ -8,7 +19,7 @@ Assign the "fit" verdict with this rubric — judge the PERSON against the role'
 - "weak": does not meet the core requirements yet (wrong field, far too junior, or missing most must-haves).
 Be conservative: when the background lacks evidence for a must-have, that is a gap, not a maybe. Do not inflate to be encouraging.`;
 
-export const analysisUser = (ctx: string, company: string, role: string, jd: string) => `
+export const analysisUser = (ctx: string, company: string, role: string, jd: string, language: string) => `
 Here is the candidate's background (from their real documents):
 
 <background>
@@ -30,11 +41,13 @@ Produce a concise strategy for tailoring their resume. Respond with a JSON objec
 - "fit": your honest verdict on this candidate's realistic chance of getting an interview for this exact job, exactly one of: "strong" (clearly qualified, should apply), "good" (solid match with minor gaps), "fair" (plausible but competitive), "stretch" (significant gaps, possible with a strong angle), "weak" (not a realistic match yet)
 - "fit_reasons": array of 2-4 short honest sentences behind the verdict — always name the strongest alignment AND the realest gap; be direct, not encouraging
 
-Use only facts present in the background. Return only JSON.`;
+If a target language is given, write top_keywords and positioning/gaps/fit_reasons text in that language too, following the same proper-noun rule above.
 
-export const RESUME_SYSTEM = `You are an elite resume writer. You write sharp, specific, quantified resume content that reads like a strong human writer — varied sentence openings, concrete verbs, zero cliches (never "results-driven", "dynamic professional", "proven track record", "passionate about"). Every fact must come from the candidate's real background. Never invent employers, titles, dates, technologies, or numbers.`;
+Use only facts present in the background. Return only JSON.${languageBlock(language)}`;
 
-export const resumeUser = (ctx: string, company: string, role: string, jd: string, analysis: string) => `
+export const RESUME_SYSTEM = `You are an elite resume writer. You write sharp, specific, quantified resume content that reads like a strong human writer — varied sentence openings, concrete verbs, zero cliches (never "results-driven", "dynamic professional", "proven track record", "passionate about"). Every fact must come from the candidate's real background. Never invent employers, titles, dates, technologies, or numbers. Always use the exact English JSON keys shown below ("headline", "summary", "skills", "category", "items", "experience", "projects", "education", "certifications", etc.) — never translate the keys themselves; only their values may be localized.`;
+
+export const resumeUser = (ctx: string, company: string, role: string, jd: string, analysis: string, language: string) => `
 Candidate's real background:
 
 <background>
@@ -63,11 +76,11 @@ Respond with a JSON object with exactly these keys (empty array/string when the 
 - "projects": array of {"name", "tech", "bullets": [strings]}
 - "education": array of {"degree", "school", "dates", "details"}
 - "certifications": array of strings
-Return only JSON.`;
+Return only JSON.${languageBlock(language)}`;
 
-export const FIX_SYSTEM = `You are an elite resume editor. You revise an existing resume to fix specific flagged problems while preserving everything that already works. You never invent employers, titles, dates, technologies, or metrics — every fact must be supported by the candidate's real background. You keep the candidate's voice: concrete verbs, varied sentence openings, and absolutely no cliches — never "results-driven", "dynamic professional", "proven track record", "passionate about", or similar filler. Change only what the flagged problems require.`;
+export const FIX_SYSTEM = `You are an elite resume editor. You revise an existing resume to fix specific flagged problems while preserving everything that already works. You never invent employers, titles, dates, technologies, or metrics — every fact must be supported by the candidate's real background. You keep the candidate's voice: concrete verbs, varied sentence openings, and absolutely no cliches — never "results-driven", "dynamic professional", "proven track record", "passionate about", or similar filler. Change only what the flagged problems require. Keep the exact English JSON keys from the input (headline, summary, skills, experience, projects, education, certifications, etc.) — never translate the keys; only their values may be in another language.`;
 
-export const fixUser = (ctx: string, jd: string, resume: string, problems: string) => `
+export const fixUser = (ctx: string, jd: string, resume: string, problems: string, language: string) => `
 Candidate's real background:
 
 <background>
@@ -98,11 +111,11 @@ Revise the resume JSON to fix the flagged problems:
 - Add missing dates ONLY if they appear in the background.
 - Keep every fact that was already correct. Do not add new jobs, degrees, or numbers.
 
-Return the complete revised resume as JSON with the same schema and keys as the input (headline, summary, skills, experience, projects, education, certifications). Return only JSON.`;
+Return the complete revised resume as JSON with the same schema and keys as the input (headline, summary, skills, experience, projects, education, certifications). Return only JSON.${languageBlock(language)}`;
 
 export const COVER_SYSTEM = `You are an exceptional cover letter writer. Your letters sound like a specific, thoughtful human — never a template. Open with substance (never "I am writing to apply for..."), connect the candidate's real work to the company's actual needs, close with quiet confidence. 250-350 words. No cliches, no bullet points. Every claim must come from the candidate's real background.`;
 
-export const coverUser = (ctx: string, name: string, company: string, role: string, jd: string, analysis: string) => `
+export const coverUser = (ctx: string, name: string, company: string, role: string, jd: string, analysis: string, language: string) => `
 Candidate's real background:
 
 <background>
@@ -123,4 +136,4 @@ Tailoring strategy:
 ${analysis}
 </strategy>
 
-Write the cover letter body only (no date/address header). Start with "Dear Hiring Manager," (or better if the JD names a person/team). End with a sign-off and the candidate's name. Plain text, paragraphs separated by blank lines.`;
+Write the cover letter body only (no date/address header). Start with "Dear Hiring Manager," (or better if the JD names a person/team). End with a sign-off and the candidate's name. Plain text, paragraphs separated by blank lines.${languageBlock(language)}`;

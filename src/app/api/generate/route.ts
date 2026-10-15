@@ -15,15 +15,15 @@ export const maxDuration = 300;
 
 async function runWithFallback(
   cfg: LlmConfig, context: string, contact: Contact,
-  company: string, role: string, jd: string,
+  company: string, role: string, jd: string, language: string,
 ): Promise<{ resume: Resume; cover: string; keywords: string[]; fit?: Fit; modelUsed: string; usedFallback: boolean }> {
   try {
-    const result = await runPipeline(cfg, context, contact, company, role, jd);
+    const result = await runPipeline(cfg, context, contact, company, role, jd, language);
     return { ...result, modelUsed: cfg.model, usedFallback: false };
   } catch (e) {
     const fb = fallbackConfig(cfg);
     if (!fb) throw e;
-    const result = await runPipeline(fb, context, contact, company, role, jd);
+    const result = await runPipeline(fb, context, contact, company, role, jd, language);
     return { ...result, modelUsed: fb.model, usedFallback: true };
   }
 }
@@ -32,23 +32,23 @@ const FIT_LEVELS: FitLevel[] = ["strong", "good", "fair", "stretch", "weak"];
 
 async function runPipeline(
   cfg: LlmConfig, context: string, contact: Contact,
-  company: string, role: string, jd: string,
+  company: string, role: string, jd: string, language: string,
 ): Promise<{ resume: Resume; cover: string; keywords: string[]; fit?: Fit }> {
   const co = company || "(not specified)";
   const ro = role || "(see JD)";
 
   const analysisRaw = await chat(cfg, prompts.ANALYSIS_SYSTEM,
-    prompts.analysisUser(context, co, ro, jd), true);
+    prompts.analysisUser(context, co, ro, jd, language), true);
   const analysis = extractJson<{ top_keywords?: string[]; fit?: string; fit_reasons?: string[] }>(analysisRaw);
   const analysisStr = JSON.stringify(analysis, null, 1);
 
   const resumeRaw = await chat(cfg, prompts.RESUME_SYSTEM,
-    prompts.resumeUser(context, co, ro, jd, analysisStr), true);
+    prompts.resumeUser(context, co, ro, jd, analysisStr, language), true);
   const resume = coerceResume(extractJson(resumeRaw));
 
   const cover = (
     await chat(cfg, prompts.COVER_SYSTEM,
-      prompts.coverUser(context, contact.name, co, ro, jd, analysisStr), false)
+      prompts.coverUser(context, contact.name, co, ro, jd, analysisStr, language), false)
   ).trim();
 
   const keywords = (analysis.top_keywords ?? []).filter((k) => typeof k === "string");
@@ -76,6 +76,7 @@ export async function POST(request: Request) {
   const company: string = (body.company ?? "").trim();
   const role: string = (body.role ?? "").trim();
   const template: string = body.template ?? "slate";
+  const language: string = body.language ?? "en";
   if (!jd) return NextResponse.json({ error: "Paste a job description first." }, { status: 422 });
 
   const cfg = llmConfigFromEnv();
@@ -116,7 +117,7 @@ export async function POST(request: Request) {
       }
       const startedAt = Date.now();
       try {
-        const result = await runWithFallback(cfg, context, contact, company, role, jd);
+        const result = await runWithFallback(cfg, context, contact, company, role, jd, language);
         ({ resume, cover, keywords, fit } = result);
         isSample = false;
         logGenerationEvent({
@@ -141,6 +142,7 @@ export async function POST(request: Request) {
       id: `demo-${Date.now()}`,
       resume, cover_letter: cover, ats,
       is_demo: isSample,
+      language,
       engine_used: isSample ? null : cfg!.model,
       created_at: new Date().toISOString(),
     });
@@ -197,7 +199,7 @@ export async function POST(request: Request) {
     }
     const startedAt = Date.now();
     try {
-      const result = await runWithFallback(cfg, context, contact, company, role, jd);
+      const result = await runWithFallback(cfg, context, contact, company, role, jd, language);
       ({ resume, cover, keywords, fit } = result);
       logGenerationEvent({
         route: "generate", identifier: `user:${user.id}`, model: result.modelUsed,
@@ -221,7 +223,7 @@ export async function POST(request: Request) {
     .from("applications")
     .insert({
       user_id: user.id,
-      company, role, jd, template,
+      company, role, jd, template, language,
       resume, cover_letter: cover, ats,
       is_demo: isSample,
     })
@@ -235,6 +237,7 @@ export async function POST(request: Request) {
     id: inserted.id,
     resume, cover_letter: cover, ats,
     is_demo: isSample,
+    language,
     engine_used: isSample ? null : cfg!.model,
     created_at: inserted.created_at,
   });

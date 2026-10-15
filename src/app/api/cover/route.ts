@@ -32,6 +32,7 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const jd: string = (body.jd ?? "").trim();
+  const language: string = body.language ?? "en";
   const company: string = (body.company ?? "").trim();
   const role: string = (body.role ?? "").trim();
   const name: string = body.contact?.name ?? "";
@@ -90,7 +91,7 @@ export async function POST(request: Request) {
   try {
     coverText = (
       await chat(cfg, prompts.COVER_SYSTEM,
-        prompts.coverUser(context, name, company || "(not specified)", role || "(see JD)", jd, steer), false)
+        prompts.coverUser(context, name, company || "(not specified)", role || "(see JD)", jd, steer, language), false)
     ).trim();
   } catch (e) {
     const fb = fallbackConfig(cfg);
@@ -101,7 +102,7 @@ export async function POST(request: Request) {
     try {
       coverText = (
         await chat(fb, prompts.COVER_SYSTEM,
-          prompts.coverUser(context, name, company || "(not specified)", role || "(see JD)", jd, steer), false)
+          prompts.coverUser(context, name, company || "(not specified)", role || "(see JD)", jd, steer, language), false)
       ).trim();
       modelUsed = fb.model;
       usedFallback = true;

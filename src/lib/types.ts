@@ -92,6 +92,9 @@ export type Application = {
   cover_letter: string | null;
   ats: AtsReport | null;
   template: string;
+  /* output language code for the generated resume/cover (missing = "en" for
+     rows created before db/multilingual.sql); the uploaded background is never translated */
+  language?: string;
   show_photo?: boolean;
   is_demo: boolean;
   created_at: string;

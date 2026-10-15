@@ -73,8 +73,11 @@ const NUM_WORDS: Record<string, string> = {
     Exported so the job-matching layer (lib/match.ts) reuses the exact same
     normalization/synonym logic instead of duplicating it. */
 export function normalize(s: string): string {
-  let out = s.toLowerCase().replace(/[^a-z0-9+#]+/g, " ");
-  // fold small number-words to digits so "five years" ~ "5 years"
+  // Unicode-aware: keep accented/non-ASCII letters (ä ö ü ß é ñ ç …) so
+  // German/Dutch/Spanish/French/Italian/Portuguese keyword matching works —
+  // the old [^a-z0-9+#] stripped them and corrupted non-English words.
+  let out = s.toLocaleLowerCase().replace(/[^\p{L}\p{N}+#]+/gu, " ");
+  // fold small number-words to digits so "five years" ~ "5 years" (English only)
   out = out.replace(/\b(zero|one|two|three|four|five|six|seven|eight|nine|ten)\b/g, (m) => NUM_WORDS[m]);
   return ` ${out.replace(/\s+/g, " ").trim()} `;
 }

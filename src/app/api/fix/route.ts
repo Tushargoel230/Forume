@@ -32,6 +32,7 @@ export async function POST(request: Request) {
 
   const body = await request.json();
   const jd: string = (body.jd ?? "").trim();
+  const language: string = body.language ?? "en";
   const resume = body.resume as Resume | undefined;
   const ats = body.ats as AtsReport | undefined;
   const contact: Contact = {
@@ -92,7 +93,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const user = prompts.fixUser(context, jd, JSON.stringify(resume, null, 1), problems.join("\n"));
+  const user = prompts.fixUser(context, jd, JSON.stringify(resume, null, 1), problems.join("\n"), language);
   const startedAt = Date.now();
   let fixed: Resume;
   let modelUsed = cfg.model;

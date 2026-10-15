@@ -8,6 +8,7 @@ import { supabaseBrowser } from "@/lib/supabase";
 import { Logo } from "@/components/Logo";
 import { ResumeEditor } from "@/components/ResumeEditor";
 import { ResumeSheet, TEMPLATES } from "@/components/ResumeSheet";
+import { LANGUAGES } from "@/lib/languages";
 import { atsCheck } from "@/lib/ats";
 import { extractText } from "@/lib/extract-text";
 import { fileToResizedDataUrl } from "@/lib/image";
@@ -271,6 +272,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
   const [company, setCompany] = useState(openedApplication?.company ?? prefillRef.current?.company ?? "");
   const [role, setRole] = useState(openedApplication?.role ?? prefillRef.current?.role ?? "");
   const [template, setTemplate] = useState(openedApplication?.template ?? "slate");
+  const [language, setLanguage] = useState(openedApplication?.language ?? "en");
   const [busy, setBusy] = useState(false);
   const [fixing, setFixing] = useState(false);
   const [regenningCover, setRegenningCover] = useState(false);
@@ -397,7 +399,10 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
     }
   }
 
-  async function generate() {
+  async function generate(langArg?: string) {
+    // langArg lets the ResultPanel language switch re-tailor immediately without
+    // waiting for the language state update to flush through the closure.
+    const lang = typeof langArg === "string" ? langArg : language;
     if (!jd.trim()) {
       setError("Paste a job description first.");
       return;
@@ -421,7 +426,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
           ...(isDemo ? { "X-Demo-Email": session.user.email ?? "", "X-Demo-Id": demoDeviceId() } : {}),
         },
         body: JSON.stringify({
-          jd, company, role, template,
+          jd, company, role, template, language: lang,
           // photo is presentation-only — never send the data URL to the server/LLM
           ...(isDemo ? { documents, contact: { ...contact, photo: undefined } } : {}),
         }),
@@ -431,7 +436,8 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
       const app: Application = {
         id: data.id, company, role, jd,
         resume: data.resume, cover_letter: data.cover_letter,
-        ats: data.ats, template, show_photo: true, is_demo: data.is_demo,
+        ats: data.ats, template, language: data.language ?? lang,
+        show_photo: true, is_demo: data.is_demo,
         created_at: data.created_at,
       };
       setResult(app);
@@ -458,6 +464,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         .update({
           resume: updated.resume, cover_letter: updated.cover_letter,
           ats: updated.ats, template: updated.template,
+          language: updated.language ?? "en",
           show_photo: updated.show_photo ?? true,
         })
         .eq("id", updated.id);
@@ -486,6 +493,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         },
         body: JSON.stringify({
           jd: result.jd, resume: result.resume, ats: result.ats,
+          language: result.language ?? "en",
           contact: { ...contact, photo: undefined },
           ...(isDemo ? { documents } : {}),
         }),
@@ -538,6 +546,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         },
         body: JSON.stringify({
           jd: result.jd, company: result.company, role: result.role,
+          language: result.language ?? "en",
           contact: { ...contact, photo: undefined }, tone, length,
           ...(isDemo ? { documents } : {}),
         }),
@@ -592,7 +601,7 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
             placeholder="Paste the full job description here…" className={inputCls} />
         </Field>
         <button
-          onClick={generate}
+          onClick={() => generate()}
           disabled={busy}
           className="w-full rounded-md bg-ink px-5 py-3.5 font-semibold text-paper hover:bg-crimson transition-colors disabled:opacity-50"
         >
@@ -607,6 +616,8 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
         <ResultPanel
           result={result} contact={contact} resultTab={resultTab} setResultTab={setResultTab}
           onTemplateChange={(t) => { setTemplate(t); void updateResult({ template: t }); }}
+          onLanguageChange={(l) => { setLanguage(l); void generate(l); }}
+          regenerating={busy}
           onTogglePhoto={(v) => void updateResult({ show_photo: v })}
           onFix={fixAts} fixing={fixing} onSaveEdit={saveEditResume}
           onSaveCover={saveCover} onRegenCover={regenCover} regenningCover={regenningCover}
@@ -676,7 +687,8 @@ function NewApplication({ session }: { session: Session | DemoSession }) {
 }
 
 function ResultPanel({
-  result, contact, resultTab, setResultTab, onTemplateChange, onTogglePhoto, onFix, fixing, onSaveEdit,
+  result, contact, resultTab, setResultTab, onTemplateChange, onLanguageChange, regenerating,
+  onTogglePhoto, onFix, fixing, onSaveEdit,
   onSaveCover, onRegenCover, regenningCover,
 }: {
   result: Application;
@@ -684,6 +696,8 @@ function ResultPanel({
   resultTab: ResultTab;
   setResultTab: (t: ResultTab) => void;
   onTemplateChange: (t: string) => void;
+  onLanguageChange: (code: string) => void;
+  regenerating: boolean;
   onTogglePhoto: (v: boolean) => void;
   onFix: () => void;
   fixing: boolean;
@@ -783,6 +797,17 @@ function ResultPanel({
           >
             {TEMPLATES.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          <select
+            value={result.language ?? "en"}
+            onChange={(e) => onLanguageChange(e.target.value)}
+            disabled={regenerating || fixing}
+            title="Switch output language — re-tailors the resume & letter in that language (a fresh AI pass, not a reprint)"
+            className="rounded-md border border-rule-dark bg-white px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ink disabled:opacity-50"
+          >
+            {LANGUAGES.map((l) => (
+              <option key={l.code} value={l.code}>{l.label}</option>
             ))}
           </select>
           {downloadErr && <span className="text-xs text-crimson">{downloadErr}</span>}
